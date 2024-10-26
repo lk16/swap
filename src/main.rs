@@ -1,3 +1,9 @@
+use position::Position;
+
+pub mod board;
+pub mod position;
+
 fn main() {
-    println!("Hello, world!");
+    let board = Position::new();
+    println!("{}", board);
 }
