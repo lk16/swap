@@ -1,3 +1,8 @@
+use board::Board;
+
+pub mod board;
+
 fn main() {
-    println!("Hello, world!");
+    let board = Board::new();
+    board.print(&mut std::io::stdout(), false).unwrap();
 }
