@@ -144,6 +144,12 @@ impl Board {
             self.position.player
         }
     }
+
+    pub fn do_move_cloned(&self, index: usize) -> Self {
+        let position = self.position.do_move_cloned(index);
+        Self::combine(position, !self.black_to_move)
+        // TODO add test
+    }
 }
 
 #[cfg(test)]

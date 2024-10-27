@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::time::Duration;
 
 use crate::bot::get_bot;
-use crate::othello::position::GameState;
+use crate::othello::game::Game;
 use crate::{bot::Bot, othello::board::Board};
 use axum::extract::ws::{Message, WebSocket};
 use futures::{
@@ -52,9 +52,7 @@ struct GameSession {
     ws_sender: SplitSink<WebSocket, Message>,
     ws_receiver: SplitStream<WebSocket>,
 
-    // TODO factor out game logic
-    history: Vec<Board>,
-    undone_moves: Vec<Board>, // For undo/redo
+    game: Game,
     black_bot: Option<Box<dyn Bot>>,
     white_bot: Option<Box<dyn Bot>>,
 }
@@ -64,8 +62,7 @@ impl GameSession {
         Self {
             ws_sender,
             ws_receiver,
-            history: vec![Board::new()],
-            undone_moves: vec![],
+            game: Game::new(),
             black_bot: None,
             white_bot: None,
         }
@@ -127,42 +124,16 @@ impl GameSession {
         let black_is_human = self.black_bot.is_none();
         let white_is_human = self.white_bot.is_none();
 
-        // If both players are bots, don't undo
-        if !black_is_human && !white_is_human {
+        if !self.game.undo(black_is_human, white_is_human) {
             return Ok(());
-        }
-
-        // Find the index of the last human turn in the history
-        let last_human_turn = self
-            .history
-            .iter()
-            .rev()
-            .skip(1) // Skip current position
-            .position(|board| {
-                (board.black_to_move && black_is_human) || (!board.black_to_move && white_is_human)
-            });
-
-        // If no human turn is found, don't undo
-        let Some(last_human_index) = last_human_turn else {
-            println!("No human turn found, not undoing");
-            return Ok(());
-        };
-
-        // Convert the reverse index to a forward index
-        let last_human_index = self.history.len() - 2 - last_human_index;
-
-        // Undo moves until we reach the last human turn
-        while self.history.len() > last_human_index + 1 {
-            let undone_move = self.history.pop().unwrap();
-            self.undone_moves.push(undone_move);
         }
 
         self.send_current_board().await.map_err(WebSocketError)
     }
 
     async fn handle_redo(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
-        if let Some(redone_move) = self.undone_moves.pop() {
-            self.history.push(redone_move);
+        if !self.game.redo() {
+            return Ok(());
         }
 
         self.send_current_board().await.map_err(WebSocketError)
@@ -189,33 +160,20 @@ impl GameSession {
             ));
         }
 
-        self.undone_moves.clear();
-
-        let mut board = *self.current_board();
-        board.do_move(index);
-
-        match board.game_state() {
-            GameState::Finished | GameState::HasMoves => self.history.push(board),
-            GameState::Passed => {
-                board.pass();
-                self.history.push(board);
-            }
-        }
+        self.game.do_move(index);
 
         self.send_current_board().await.map_err(WebSocketError)?;
         self.do_bot_move().await
     }
 
     async fn handle_new_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
-        self.history = vec![Board::new()];
-        self.undone_moves.clear();
+        self.game.reset(Board::new());
         self.send_current_board().await.map_err(WebSocketError)?;
         self.do_bot_move().await
     }
 
     async fn handle_xot_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
-        self.history = vec![Board::new_xot()];
-        self.undone_moves.clear();
+        self.game.reset(Board::new_xot());
         self.send_current_board().await.map_err(WebSocketError)?;
         self.do_bot_move().await
     }
@@ -279,22 +237,14 @@ impl GameSession {
                 return Ok(()); // No bot set for player to move
             };
 
-            let mut board = *self.current_board();
+            let board = self.current_board();
 
             if !board.has_moves() {
                 return Ok(()); // Bot can't move
             }
 
             let move_index = bot.get_move(&board.position);
-            board.do_move(move_index);
-
-            match board.game_state() {
-                GameState::Finished | GameState::HasMoves => self.history.push(board),
-                GameState::Passed => {
-                    board.pass();
-                    self.history.push(board);
-                }
-            }
+            self.game.do_move(move_index);
 
             self.send_current_board().await.map_err(WebSocketError)?;
 
@@ -304,7 +254,7 @@ impl GameSession {
     }
 
     fn current_board(&self) -> &Board {
-        self.history.last().unwrap()
+        self.game.current_board()
     }
 }
 
