@@ -11,7 +11,7 @@ pub mod position;
 async fn main() {
     let app = Router::new()
         .route("/ws", get(ws_handler))
-        .nest_service("/", ServeDir::new("src/frontend/static"));
+        .nest_service("/", ServeDir::new("assets"));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("Listening on {}", addr);
