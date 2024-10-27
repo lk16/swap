@@ -1,108 +1,152 @@
 // This is inspired by my earlier project Squared, see http://github.com/lk16/squared
 
-use crate::othello::board::Board;
+use crate::othello::position::Position;
 
 use super::Bot;
 
 pub struct SquaredBot;
 
-static DEPTH: i32 = 6;
+static MIDGAME_DEPTH: u32 = 8;
+static ENDGAME_DEPTH: u32 = 14;
 static MAX_SCORE: isize = 64000;
 static MIN_SCORE: isize = -64000;
 
 impl Bot for SquaredBot {
-    fn get_move(&self, board: &Board) -> usize {
-        let moves = board.get_moves();
+    fn get_move(&self, position: &Position) -> usize {
+        let moves = position.get_moves();
 
         if moves.count_ones() == 1 {
-            // If there is only one move, take it
             return moves.trailing_zeros() as usize;
         }
 
-        // TODO don't use option
-        let mut best_move = None;
-        let mut best_score = MIN_SCORE;
-
-        // Try each possible move
-        for i in 0..64 {
-            if board.is_valid_move(i) {
-                let mut child = *board;
-                child.do_move(i);
-
-                let score = -Self::negamax(&child, DEPTH - 1, MIN_SCORE, MAX_SCORE);
-
-                if score > best_score {
-                    best_score = score;
-                    best_move = Some(i);
-                }
-            }
+        if position.count_empty() > ENDGAME_DEPTH {
+            return Self::midgame_get_move(position);
         }
 
-        best_move.expect("There should be at least one valid move")
+        Self::endgame_get_move(position)
     }
 }
 
 impl SquaredBot {
-    fn heuristic(board: &Board) -> isize {
+    fn midgame_get_move(position: &Position) -> usize {
+        let children = position.children_with_index();
+
+        let (mut best_move, first_child) = children.first().unwrap();
+        let mut alpha =
+            -Self::midgame_negamax(first_child, MIDGAME_DEPTH - 1, MIN_SCORE, MAX_SCORE);
+
+        for (move_, child) in children.iter().skip(1) {
+            let score = -Self::midgame_negamax(child, MIDGAME_DEPTH - 1, -MAX_SCORE, -alpha);
+
+            if score > alpha {
+                alpha = score;
+                best_move = *move_;
+            }
+        }
+
+        best_move
+    }
+
+    fn midgame_negamax(position: &Position, depth: u32, mut alpha: isize, beta: isize) -> isize {
+        if depth == 0 {
+            return Self::heuristic(position);
+        }
+
+        let children = position.children();
+
+        // If no moves available
+        if children.is_empty() {
+            // Check if the game is finished
+            let mut passed_position = *position;
+            passed_position.pass();
+
+            if passed_position.get_moves() == 0 {
+                // Game is over, return final evaluation
+                return position.final_score();
+            }
+
+            // Recursively evaluate after passing
+            return -Self::midgame_negamax(&passed_position, depth - 1, -beta, -alpha);
+        }
+
+        for child in &children {
+            let score = -Self::midgame_negamax(child, depth - 1, -beta, -alpha);
+            alpha = alpha.max(score);
+
+            if alpha >= beta {
+                break; // Beta cutoff
+            }
+        }
+
+        alpha
+    }
+
+    fn heuristic(position: &Position) -> isize {
         // Count corners for both players
         let corners = 0x8100000000000081u64; // Mask for corner positions
-        let player_corners = (board.position.player & corners).count_ones() as isize;
-        let opponent_corners = (board.position.opponent & corners).count_ones() as isize;
+        let player_corners = (position.player & corners).count_ones() as isize;
+        let opponent_corners = (position.opponent & corners).count_ones() as isize;
 
         let corner_diff = player_corners - opponent_corners;
 
         // Calculate move difference
-        let my_moves = board.get_moves().count_ones() as isize;
+        let player_moves = position.get_moves().count_ones() as isize;
 
-        let mut opponent_board = *board;
-        opponent_board.pass();
-        let opp_moves = opponent_board.get_moves().count_ones() as isize;
+        let mut opponent_position = *position;
+        opponent_position.pass();
+        let opponent_moves = opponent_position.get_moves().count_ones() as isize;
 
-        let move_diff = my_moves - opp_moves;
+        let move_diff = player_moves - opponent_moves;
 
         // Final heuristic calculation
         (3 * corner_diff) + move_diff
     }
 
-    fn negamax(board: &Board, depth: i32, mut alpha: isize, beta: isize) -> isize {
-        if depth == 0 {
-            return Self::heuristic(board);
+    fn endgame_get_move(position: &Position) -> usize {
+        let children = position.children_with_index();
+
+        let (mut best_move, first_child) = children.first().unwrap();
+        let mut alpha = -Self::endgame_negamax(first_child, MIN_SCORE, MAX_SCORE);
+
+        for (move_, child) in children.iter().skip(1) {
+            let score = -Self::endgame_negamax(child, -MAX_SCORE, -alpha);
+
+            if score > alpha {
+                alpha = score;
+                best_move = *move_;
+            }
         }
 
-        let moves = board.get_moves();
+        best_move
+    }
+
+    fn endgame_negamax(position: &Position, mut alpha: isize, beta: isize) -> isize {
+        let children = position.children();
 
         // If no moves available
-        if moves == 0 {
+        if children.is_empty() {
             // Check if the game is finished
-            let mut passed_board = *board;
-            passed_board.pass();
+            let mut passed_position = *position;
+            passed_position.pass();
 
-            if passed_board.get_moves() == 0 {
+            if passed_position.get_moves() == 0 {
                 // Game is over, return final evaluation
-                return Self::heuristic(board);
+                return position.final_score();
             }
 
             // Recursively evaluate after passing
-            return -Self::negamax(&passed_board, depth - 1, -beta, -alpha);
+            return -Self::endgame_negamax(&passed_position, -beta, -alpha);
         }
 
-        let mut best_score = isize::MIN;
+        for child in &children {
+            let score = -Self::endgame_negamax(child, -beta, -alpha);
+            alpha = alpha.max(score);
 
-        for i in 0..64 {
-            if board.is_valid_move(i) {
-                let mut child = *board;
-                child.do_move(i);
-
-                let score = -Self::negamax(&child, depth - 1, -beta, -alpha);
-                best_score = best_score.max(score);
-                alpha = alpha.max(score);
-
-                if alpha >= beta {
-                    break; // Beta cutoff
-                }
+            if alpha >= beta {
+                break; // Beta cutoff
             }
         }
 
-        best_score
+        alpha
     }
 }

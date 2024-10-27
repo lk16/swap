@@ -1,7 +1,7 @@
 use rand::rngs::ThreadRng;
 use rand::RngCore;
 
-use crate::othello::board::Board;
+use crate::othello::position::Position;
 
 use super::Bot;
 
@@ -9,8 +9,8 @@ pub struct RandomBot;
 
 impl Bot for RandomBot {
     // Returns the index of a random valid move
-    fn get_move(&self, board: &Board) -> usize {
-        let moves = board.get_moves();
+    fn get_move(&self, position: &Position) -> usize {
+        let moves = position.get_moves();
 
         let move_count = moves.count_ones() as usize;
         let n = ThreadRng::default().next_u64() as usize % move_count;
@@ -31,21 +31,21 @@ impl Bot for RandomBot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::othello::board::Board;
+    use crate::othello::position::Position;
 
     #[test]
     fn test_random_bot_valid_moves() {
-        let board = Board::new(); // Initial board position has 4 valid moves
+        let position = Position::new(); // Initial position position has 4 valid moves
         let bot = RandomBot;
 
         // Call get_move 10 times and verify each move is valid
         for _ in 0..10 {
-            let selected_move = bot.get_move(&board);
+            let selected_move = bot.get_move(&position);
             assert!(
-                board.is_valid_move(selected_move),
+                position.is_valid_move(selected_move),
                 "Move {} was invalid! Valid moves: {:b}",
                 selected_move,
-                board.get_moves()
+                position.get_moves()
             );
         }
     }
@@ -53,9 +53,9 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_random_bot_no_moves() {
-        let board = Board::new_from_bitboards(0, 0, true); // Empty board has no moves
+        let position = Position::new_from_bitboards(0, 0); // Empty position has no moves
         let bot = RandomBot;
 
-        bot.get_move(&board); // Should panic when there are no valid moves
+        bot.get_move(&position); // Should panic when there are no valid moves
     }
 }

@@ -167,6 +167,12 @@ impl Position {
         std::mem::swap(&mut self.player, &mut self.opponent);
     }
 
+    pub fn do_move_cloned(&self, index: usize) -> Self {
+        let mut child = *self;
+        child.do_move(index);
+        child
+    }
+
     pub fn ascii_art(&self, black_to_move: bool) -> String {
         let (player_char, opponent_char) = if black_to_move {
             ("○", "●")
@@ -201,6 +207,48 @@ impl Position {
     pub fn count_discs(&self) -> u32 {
         self.player.count_ones() + self.opponent.count_ones()
     }
+
+    pub fn count_empty(&self) -> u32 {
+        64 - self.count_discs()
+    }
+
+    pub fn children_with_index(&self) -> Vec<(usize, Position)> {
+        let moves = self.get_moves();
+
+        (0..64)
+            .filter(|i| moves & (1u64 << i) != 0)
+            .map(|i| (i, self.do_move_cloned(i)))
+            .collect()
+    }
+
+    pub fn children(&self) -> Vec<Position> {
+        let moves = self.get_moves();
+
+        (0..64)
+            .filter(|i| moves & (1u64 << i) != 0)
+            .map(|i| self.do_move_cloned(i))
+            .collect()
+    }
+
+    pub fn final_score(&self) -> isize {
+        let player = self.player.count_ones() as isize;
+        let opponent = self.opponent.count_ones() as isize;
+
+        if player > opponent {
+            // Player wins
+            return 64 - (2 * opponent);
+        }
+
+        if opponent > player {
+            // Opponent wins
+            return -64 + (2 * player);
+        }
+
+        // Draw
+        0
+    }
+
+    // TODO add missing tests
 }
 
 #[cfg(test)]

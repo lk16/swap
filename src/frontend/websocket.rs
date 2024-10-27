@@ -228,6 +228,7 @@ impl GameSession {
 
         if name == "human" {
             self.black_bot = None;
+            return Ok(());
         }
 
         let Some(bot) = get_bot(name) else {
@@ -238,6 +239,7 @@ impl GameSession {
         };
 
         self.black_bot = Some(bot);
+        self.do_bot_move().await?;
         Ok(())
     }
 
@@ -249,6 +251,7 @@ impl GameSession {
 
         if name == "human" {
             self.white_bot = None;
+            return Ok(());
         }
 
         let Some(bot) = get_bot(name) else {
@@ -259,6 +262,7 @@ impl GameSession {
         };
 
         self.white_bot = Some(bot);
+        self.do_bot_move().await?;
         Ok(())
     }
 
@@ -281,7 +285,7 @@ impl GameSession {
                 return Ok(()); // Bot can't move
             }
 
-            let move_index = bot.get_move(&board);
+            let move_index = bot.get_move(&board.position);
             board.do_move(move_index);
 
             match board.game_state() {
