@@ -1,7 +1,7 @@
 use serde_json::json;
 use std::fmt::{self, Display};
 
-use crate::position::Position;
+use super::position::Position;
 
 #[derive(Clone)]
 pub struct Board {

@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::board::Board;
+use crate::othello::board::Board;
 use axum::extract::ws::{Message, WebSocket};
 use serde_json::Value;
 

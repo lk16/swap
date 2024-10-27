@@ -5,7 +5,7 @@ use std::fmt::{self, Display};
 
 lazy_static! {
     static ref XOT_POSITIONS: Vec<Position> = {
-        let json_str = include_str!("../assets/xot.json");
+        let json_str = include_str!("../../assets/xot.json");
         let json: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
 
         fn parse_position(v: &Value) -> Position {
