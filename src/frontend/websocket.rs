@@ -222,19 +222,43 @@ impl GameSession {
 
     async fn handle_set_black_player(
         &mut self,
-        (_, value): (&String, &Value),
+        (key, value): (&String, &Value),
     ) -> Result<(), HandlerError> {
-        self.black_bot = get_bot(value.as_str().unwrap());
-        self.do_bot_move().await?;
+        let name = value.as_str().unwrap();
+
+        if name == "human" {
+            self.black_bot = None;
+        }
+
+        let Some(bot) = get_bot(name) else {
+            return Err(HandlerValueError(
+                (key.clone(), value.to_string()),
+                "unknown bot".to_string(),
+            ));
+        };
+
+        self.black_bot = Some(bot);
         Ok(())
     }
 
     async fn handle_set_white_player(
         &mut self,
-        (_, value): (&String, &Value),
+        (key, value): (&String, &Value),
     ) -> Result<(), HandlerError> {
-        self.white_bot = get_bot(value.as_str().unwrap());
-        self.do_bot_move().await?;
+        let name = value.as_str().unwrap();
+
+        if name == "human" {
+            self.white_bot = None;
+        }
+
+        let Some(bot) = get_bot(name) else {
+            return Err(HandlerValueError(
+                (key.clone(), value.to_string()),
+                "unknown bot".to_string(),
+            ));
+        };
+
+        self.white_bot = Some(bot);
         Ok(())
     }
 
