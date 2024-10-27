@@ -190,5 +190,3 @@ pub async fn handle_socket(socket: WebSocket) {
         eprintln!("WS error: {}", err);
     }
 }
-
-// TODO add tests

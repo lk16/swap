@@ -107,7 +107,11 @@ impl Position {
     }
 
     pub fn is_valid_move(&self, index: usize) -> bool {
-        self.get_moves() & (1u64 << index) != 0 // TODO add tests
+        if index >= 64 {
+            return false;
+        }
+
+        self.get_moves() & (1u64 << index) != 0
     }
 
     pub fn pass(&mut self) {

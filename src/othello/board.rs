@@ -59,7 +59,7 @@ impl Board {
     }
 
     pub fn is_valid_move(&self, index: usize) -> bool {
-        self.position.is_valid_move(index) // TODO add tests
+        self.position.is_valid_move(index)
     }
 
     pub fn do_move(&mut self, index: usize) {
@@ -232,5 +232,37 @@ mod tests {
         assert_eq!(json["white"], json!([36]));
         assert_eq!(json["turn"], "white");
         assert_eq!(json["moves"], json!([18, 20, 34]));
+    }
+
+    #[test]
+    fn test_is_valid_move() {
+        let board = Board::new();
+
+        // Test valid moves for initial position
+        assert!(board.is_valid_move(19)); // D3
+        assert!(board.is_valid_move(26)); // C4
+        assert!(board.is_valid_move(37)); // E6
+        assert!(board.is_valid_move(44)); // F5
+
+        // Test invalid moves
+        assert!(!board.is_valid_move(0)); // A1 (corner)
+        assert!(!board.is_valid_move(27)); // D4 (occupied)
+        assert!(!board.is_valid_move(28)); // E4 (occupied)
+        assert!(!board.is_valid_move(64)); // Out of bounds
+    }
+
+    #[test]
+    fn test_is_valid_move_after_move() {
+        let mut board = Board::new();
+        board.do_move(19); // D3
+
+        // Test valid moves for white after black plays D3
+        assert!(board.is_valid_move(18)); // C3
+        assert!(board.is_valid_move(20)); // E3
+        assert!(board.is_valid_move(34)); // C5
+
+        // Test invalid moves
+        assert!(!board.is_valid_move(19)); // D3 (occupied)
+        assert!(!board.is_valid_move(44)); // F5 (not valid for white)
     }
 }
