@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Othello Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #222222;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 80px);
+            grid-gap: 3px;
+            background-color: #008000;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .cell {
+            width: 80px;
+            height: 80px;
+            background-color: #00a000;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .piece {
+            width: 65px;
+            height: 65px;
+            border-radius: 50%;
+        }
+
+        .black {
+            background-color: #000;
+        }
+
+        .white {
+            background-color: #fff;
+        }
+
+        .valid-move::after {
+            content: '';
+            display: block;
+            width: 16px;
+            height: 16px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="board"></div>
+    <script>
+        const board = document.getElementById('board');
+        const ws = new WebSocket('ws://localhost:3000/ws');
+
+        function createBoard() {
+            for (let i = 0; i < 64; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.index = i;
+                cell.addEventListener('click', () => makeMove(i));
+                board.appendChild(cell);
+            }
+        }
+
+        function updateBoard(gameState) {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach((cell, index) => {
+                cell.innerHTML = '';
+                cell.classList.remove('valid-move');
+                if (gameState.black.includes(index)) {
+                    const piece = document.createElement('div');
+                    piece.className = 'piece black';
+                    cell.appendChild(piece);
+                } else if (gameState.white.includes(index)) {
+                    const piece = document.createElement('div');
+                    piece.className = 'piece white';
+                    cell.appendChild(piece);
+                }
+                if (gameState.moves.includes(index)) {
+                    cell.classList.add('valid-move');
+                }
+            });
+        }
+
+        function makeMove(index) {
+            ws.send(index.toString());
+        }
+
+        function undoMove() {
+            ws.send('undo');
+        }
+
+        ws.onmessage = (event) => {
+            const gameState = JSON.parse(event.data);
+            updateBoard(gameState);
+        };
+
+        createBoard();
+
+        // Add right-click event listener to the board
+        board.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); // Prevent the default context menu
+            undoMove();
+        });
+    </script>
+</body>
+
+</html>

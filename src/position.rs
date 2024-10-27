@@ -1,5 +1,6 @@
 use std::fmt::{self, Display};
 
+#[derive(Clone)]
 pub struct Position {
     pub player: u64,
     pub opponent: u64,

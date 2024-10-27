@@ -1,7 +1,9 @@
+use serde_json::json;
 use std::fmt::{self, Display};
 
 use crate::position::Position;
 
+#[derive(Clone)]
 pub struct Board {
     position: Position,
     black_to_move: bool,
@@ -46,36 +48,50 @@ impl Board {
     }
 
     pub fn as_ws_message(&self) -> String {
-        let mut result = String::with_capacity(66);
-
-        let (player_char, opponent_char) = if self.black_to_move {
-            ('b', 'w')
-        } else {
-            ('w', 'b')
-        };
+        let mut black = Vec::new();
+        let mut white = Vec::new();
+        let mut moves = Vec::new();
 
         for i in 0..64 {
             let mask = 1u64 << i;
             if self.position.player & mask != 0 {
-                result.push(player_char);
+                if self.black_to_move {
+                    black.push(i);
+                } else {
+                    white.push(i);
+                }
             } else if self.position.opponent & mask != 0 {
-                result.push(opponent_char);
-            } else {
-                result.push('.');
+                if self.black_to_move {
+                    white.push(i);
+                } else {
+                    black.push(i);
+                }
             }
         }
 
-        // Add a space and the current player indicator
-        result.push(' ');
-        result.push(player_char);
+        let valid_moves = self.get_moves();
+        for i in 0..64 {
+            if valid_moves & (1u64 << i) != 0 {
+                moves.push(i);
+            }
+        }
 
-        result
+        let turn = if self.black_to_move { "black" } else { "white" };
+
+        json!({
+            "black": black,
+            "white": white,
+            "turn": turn,
+            "moves": moves,
+        })
+        .to_string()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn test_new_board() {
@@ -155,16 +171,25 @@ mod tests {
     #[test]
     fn test_as_ws_message_black() {
         let board = Board::new();
-        let expected = "...........................wb......bw........................... b";
-        assert_eq!(board.as_ws_message(), expected);
+        let message = board.as_ws_message();
+        let json: Value = serde_json::from_str(&message).unwrap();
+
+        assert_eq!(json["black"], json!([28, 35]));
+        assert_eq!(json["white"], json!([27, 36]));
+        assert_eq!(json["turn"], "black");
+        assert_eq!(json["moves"], json!([19, 26, 37, 44]));
     }
 
     #[test]
     fn test_as_ws_message_white() {
         let mut board = Board::new();
         board.do_move(19); // D3
-        let expected_after_move =
-            "...................b.......bb......bw........................... w";
-        assert_eq!(board.as_ws_message(), expected_after_move);
+        let message = board.as_ws_message();
+        let json: Value = serde_json::from_str(&message).unwrap();
+
+        assert_eq!(json["black"], json!([19, 27, 28, 35]));
+        assert_eq!(json["white"], json!([36]));
+        assert_eq!(json["turn"], "white");
+        assert_eq!(json["moves"], json!([18, 20, 34]));
     }
 }
