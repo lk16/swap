@@ -137,7 +137,6 @@ impl GameSession {
         };
 
         if !self.current_board().is_valid_move(index) {
-            // TODO prevent sending invalid moves from client
             return Err(HandlerValueError(
                 (key.clone(), value.to_string()),
                 "invalid move".to_string(),

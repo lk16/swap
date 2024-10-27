@@ -32,9 +32,12 @@ function updateBoard(gameState) {
 }
 
 function makeMove(index) {
-    ws.send(JSON.stringify({
-        do_move: index
-    }));
+    const cell = document.querySelector(`.cell[data-index="${index}"]`);
+    if (cell.classList.contains('valid-move')) {
+        ws.send(JSON.stringify({
+            do_move: index
+        }));
+    }
 }
 
 function undoMove() {
