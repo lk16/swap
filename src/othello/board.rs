@@ -148,7 +148,6 @@ impl Board {
     pub fn do_move_cloned(&self, index: usize) -> Self {
         let position = self.position.do_move_cloned(index);
         Self::combine(position, !self.black_to_move)
-        // TODO add test
     }
 }
 
@@ -393,5 +392,21 @@ mod tests {
         let ascii_art_output_after_move = moved_board.ascii_art();
 
         assert_eq!(display_output_after_move, ascii_art_output_after_move);
+    }
+
+    #[test]
+    fn test_do_move_cloned() {
+        let board = Board::new();
+        let cloned = board.do_move_cloned(19); // D3
+
+        // Original board should be unchanged
+        assert!(board.black_to_move);
+        assert_eq!(board.position.player, 0x0000000810000000);
+        assert_eq!(board.position.opponent, 0x0000001008000000);
+
+        // Cloned board should reflect the move
+        assert!(!cloned.black_to_move);
+        assert_eq!(cloned.position.player, 0x0000001000000000);
+        assert_eq!(cloned.position.opponent, 0x0000000818080000);
     }
 }
