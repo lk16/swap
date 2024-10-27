@@ -96,6 +96,8 @@ impl GameSession {
         match (command.as_str(), data) {
             ("undo", data) => self.handle_undo((command, data)).await,
             ("do_move", data) => self.handle_do_move((command, data)).await,
+            ("new_game", data) => self.handle_new_game((command, data)).await,
+            ("xot_game", data) => self.handle_xot_game((command, data)).await,
             _ => Err(UnknownCommand((command.clone(), data.to_string()))),
         }
     }
@@ -128,6 +130,16 @@ impl GameSession {
             self.history.push(board.clone());
         }
 
+        self.send_state().await.map_err(WebSocketError)
+    }
+
+    async fn handle_new_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
+        self.history = vec![Board::new()];
+        self.send_state().await.map_err(WebSocketError)
+    }
+
+    async fn handle_xot_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
+        self.history = vec![Board::new_xot()];
         self.send_state().await.map_err(WebSocketError)
     }
 

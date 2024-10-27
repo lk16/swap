@@ -30,6 +30,13 @@ impl Board {
         }
     }
 
+    pub fn new_xot() -> Self {
+        Self {
+            position: Position::new_xot(),
+            black_to_move: true,
+        }
+    }
+
     pub fn get_moves(&self) -> u64 {
         self.position.get_moves()
     }

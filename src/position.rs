@@ -1,4 +1,29 @@
+use lazy_static::lazy_static;
+use rand::{rngs::ThreadRng, RngCore};
+use serde_json::Value;
 use std::fmt::{self, Display};
+
+lazy_static! {
+    static ref XOT_POSITIONS: Vec<Position> = {
+        let json_str = include_str!("../xot.json");
+        let json: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
+
+        fn parse_position(v: &Value) -> Position {
+            let player = v["player"].as_str().unwrap().trim_start_matches("0x");
+            let opponent = v["opponent"].as_str().unwrap().trim_start_matches("0x");
+            Position {
+                player: u64::from_str_radix(player, 16).unwrap(),
+                opponent: u64::from_str_radix(opponent, 16).unwrap(),
+            }
+        }
+
+        json.as_array()
+            .expect("JSON is not an array")
+            .iter()
+            .map(parse_position)
+            .collect()
+    };
+}
 
 #[derive(Clone)]
 pub struct Position {
@@ -24,6 +49,11 @@ impl Position {
             player: 0x00000000810000000,
             opponent: 0x00000001008000000,
         }
+    }
+
+    pub fn new_xot() -> Self {
+        let n = ThreadRng::default().next_u64() as usize;
+        XOT_POSITIONS[n % XOT_POSITIONS.len()].clone() // TODO add tests
     }
 
     fn shift(bitboard: u64, dir: i32) -> u64 {
