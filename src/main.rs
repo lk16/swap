@@ -1,9 +1,9 @@
-use position::Position;
+use frontend::app::run_app;
 
-pub mod board;
-pub mod position;
+pub mod frontend;
+pub mod othello;
 
-fn main() {
-    let board = Position::new();
-    println!("{}", board);
+#[tokio::main]
+async fn main() {
+    run_app().await;
 }

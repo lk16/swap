@@ -1,5 +1,46 @@
+use lazy_static::lazy_static;
+use rand::{rngs::ThreadRng, RngCore};
+use serde_json::Value;
 use std::fmt::{self, Display};
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
+lazy_static! {
+    static ref XOT_POSITIONS: Vec<Position> = {
+        let path = Path::new("assets/xot.json");
+        let mut file = File::open(path).expect("Failed to open XOT file");
+        let mut json_str = String::new();
+        file.read_to_string(&mut json_str)
+            .expect("Failed to read XOT file");
+
+        let json: Value = serde_json::from_str(&json_str).expect("Failed to parse JSON");
+
+        fn parse_position(v: &Value) -> Position {
+            let player = v["player"].as_str().unwrap().trim_start_matches("0x");
+            let opponent = v["opponent"].as_str().unwrap().trim_start_matches("0x");
+            Position {
+                player: u64::from_str_radix(player, 16).unwrap(),
+                opponent: u64::from_str_radix(opponent, 16).unwrap(),
+            }
+        }
+
+        json.as_array()
+            .expect("JSON is not an array")
+            .iter()
+            .map(parse_position)
+            .collect()
+    };
+}
+
+#[derive(PartialEq, Debug)]
+pub enum GameState {
+    HasMoves,
+    Passed,
+    Finished,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Position {
     pub player: u64,
     pub opponent: u64,
@@ -23,6 +64,15 @@ impl Position {
             player: 0x00000000810000000,
             opponent: 0x00000001008000000,
         }
+    }
+
+    pub fn new_xot() -> Self {
+        let n = ThreadRng::default().next_u64() as usize;
+        XOT_POSITIONS[n % XOT_POSITIONS.len()]
+    }
+
+    pub fn new_from_bitboards(player: u64, opponent: u64) -> Self {
+        Self { player, opponent }
     }
 
     fn shift(bitboard: u64, dir: i32) -> u64 {
@@ -59,6 +109,33 @@ impl Position {
 
     pub fn has_moves(&self) -> bool {
         self.get_moves() != 0
+    }
+
+    pub fn is_valid_move(&self, index: usize) -> bool {
+        if index >= 64 {
+            return false;
+        }
+
+        self.get_moves() & (1u64 << index) != 0
+    }
+
+    pub fn pass(&mut self) {
+        std::mem::swap(&mut self.player, &mut self.opponent);
+    }
+
+    pub fn game_state(&self) -> GameState {
+        if self.has_moves() {
+            return GameState::HasMoves;
+        }
+
+        let mut passed = *self;
+        passed.pass();
+
+        if passed.has_moves() {
+            return GameState::Passed;
+        }
+
+        GameState::Finished
     }
 
     pub fn do_move(&mut self, index: usize) {
@@ -119,6 +196,10 @@ impl Position {
         }
         output.push_str("+-A-B-C-D-E-F-G-H-+\n");
         output
+    }
+
+    pub fn count_discs(&self) -> u32 {
+        self.player.count_ones() + self.opponent.count_ones()
     }
 }
 
@@ -208,5 +289,81 @@ mod tests {
 ";
         println!("{}", result_white);
         assert_eq!(result_white, expected_output_white);
+    }
+
+    #[test]
+    fn test_new_from_bitboards() {
+        let position = Position::new_from_bitboards(0x1, 0x2);
+        assert_eq!(position.player, 0x1);
+        assert_eq!(position.opponent, 0x2);
+    }
+
+    #[test]
+    fn test_pass() {
+        let mut position = Position::new();
+        let original_player = position.player;
+        let original_opponent = position.opponent;
+
+        position.pass();
+        assert_eq!(position.player, original_opponent);
+        assert_eq!(position.opponent, original_player);
+
+        // Test double pass returns to original position
+        position.pass();
+        assert_eq!(position.player, original_player);
+        assert_eq!(position.opponent, original_opponent);
+    }
+
+    #[test]
+    fn test_game_state() {
+        // Test HasMoves
+        let position = Position::new();
+        assert_eq!(position.game_state(), GameState::HasMoves);
+
+        // Test Passed
+        let passed_position = Position {
+            player: 0x2,
+            opponent: 0x1,
+        };
+        assert_eq!(passed_position.game_state(), GameState::Passed);
+
+        // Test Finished
+        let finished_position = Position {
+            player: 0xFFFFFFFFFFFFFFFF,
+            opponent: 0x0000000000000000,
+        };
+        assert_eq!(finished_position.game_state(), GameState::Finished);
+    }
+
+    #[test]
+    fn test_is_valid_move() {
+        let position = Position::new();
+
+        // Test valid moves for initial position
+        assert!(position.is_valid_move(19)); // D3
+        assert!(position.is_valid_move(26)); // E3
+        assert!(position.is_valid_move(37)); // F4
+        assert!(position.is_valid_move(44)); // E5
+
+        // Test invalid moves
+        assert!(!position.is_valid_move(0)); // A1
+        assert!(!position.is_valid_move(64)); // Out of bounds
+    }
+
+    #[test]
+    fn test_count_discs() {
+        let position = Position::new();
+        assert_eq!(position.count_discs(), 4);
+
+        let full_position = Position {
+            player: 0xFFFFFFFFFFFFFFFF,
+            opponent: 0x0000000000000000,
+        };
+        assert_eq!(full_position.count_discs(), 64);
+    }
+
+    #[test]
+    fn test_default() {
+        assert_eq!(Position::default(), Position::new());
     }
 }
