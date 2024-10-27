@@ -38,9 +38,19 @@ function makeMove(index) {
 }
 
 function undoMove() {
-    ws.send(JSON.stringify({
-        "undo": null
-    }));
+    ws.send(JSON.stringify({ "undo": null }));
+}
+
+function redoMove() {
+    ws.send(JSON.stringify({ "redo": null }));
+}
+
+function newGame() {
+    ws.send(JSON.stringify({ "new_game": null }));
+}
+
+function xotGame() {
+    ws.send(JSON.stringify({ "xot_game": null }));
 }
 
 ws.onmessage = (event) => {
@@ -55,3 +65,8 @@ board.addEventListener('contextmenu', (e) => {
     e.preventDefault(); // Prevent the default context menu
     undoMove();
 });
+
+document.getElementById('new-game-btn').addEventListener('click', newGame);
+document.getElementById('xot-game-btn').addEventListener('click', xotGame);
+document.getElementById('undo-btn').addEventListener('click', undoMove);
+document.getElementById('redo-btn').addEventListener('click', redoMove);

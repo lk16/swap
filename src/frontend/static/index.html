@@ -20,7 +20,7 @@
             display: grid;
             grid-template-columns: repeat(8, 80px);
             grid-gap: 3px;
-            background-color: #008000;
+            background-color: #007000;
             padding: 15px;
             border-radius: 8px;
         }
@@ -28,7 +28,7 @@
         .cell {
             width: 80px;
             height: 80px;
-            background-color: #00a000;
+            background-color: #009000;
             border-radius: 5px;
             display: flex;
             justify-content: center;
@@ -58,11 +58,48 @@
             background-color: rgba(0, 0, 0, 0.3);
             border-radius: 50%;
         }
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        #controls button {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #controls button:hover {
+            background-color: #45a049;
+        }
     </style>
 </head>
 
 <body>
-    <div id="board"></div>
+    <div id="game-container">
+        <div id="board"></div>
+        <div id="controls">
+            <button id="new-game-btn">New Game</button>
+            <button id="xot-game-btn">XOT Game</button>
+            <button id="undo-btn">Undo</button>
+            <button id="redo-btn">Redo</button>
+        </div>
+    </div>
     <script src="app.js"></script>
 </body>
 

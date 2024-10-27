@@ -34,7 +34,7 @@ impl Display for HandlerError {
                 )
             }
             Self::UnknownCommand((command, value)) => {
-                write!(f, "Unknown command: {} {}", command, value)
+                write!(f, "Unknown command {} with value {}", command, value)
             }
         }
     }
@@ -59,7 +59,7 @@ impl GameSession {
         while let Some(msg) = self.socket.recv().await {
             if let Err(e) = self.handle_message(msg).await {
                 match e {
-                    HandlerError::WebSocketError(e) => return Err(e),
+                    WebSocketError(e) => return Err(e),
                     _ => eprintln!("{}", e),
                 }
             }
@@ -105,9 +105,7 @@ impl GameSession {
             self.history.pop();
         }
 
-        self.send_state()
-            .await
-            .map_err(HandlerError::WebSocketError)
+        self.send_state().await.map_err(WebSocketError)
     }
 
     async fn handle_do_move(
@@ -130,9 +128,7 @@ impl GameSession {
             self.history.push(board.clone());
         }
 
-        self.send_state()
-            .await
-            .map_err(HandlerError::WebSocketError)
+        self.send_state().await.map_err(WebSocketError)
     }
 
     fn state(&self) -> &Board {
