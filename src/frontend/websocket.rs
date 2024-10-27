@@ -2,6 +2,10 @@ use std::fmt::{self, Display};
 
 use crate::othello::board::{Board, State};
 use axum::extract::ws::{Message, WebSocket};
+use futures::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use serde_json::Value;
 
 enum HandlerError {
@@ -41,15 +45,17 @@ impl Display for HandlerError {
 }
 
 struct GameSession {
-    socket: WebSocket,
+    ws_sender: SplitSink<WebSocket, Message>,
+    ws_receiver: SplitStream<WebSocket>,
     history: Vec<Board>,
     undone_moves: Vec<Board>, // For undo/redo
 }
 
 impl GameSession {
-    async fn new(socket: WebSocket) -> Self {
+    fn new(ws_sender: SplitSink<WebSocket, Message>, ws_receiver: SplitStream<WebSocket>) -> Self {
         Self {
-            socket,
+            ws_sender,
+            ws_receiver,
             history: vec![Board::new()],
             undone_moves: vec![],
         }
@@ -58,7 +64,7 @@ impl GameSession {
     async fn run(&mut self) -> Result<(), axum::Error> {
         self.send_current_board().await?;
 
-        while let Some(msg) = self.socket.recv().await {
+        while let Some(msg) = self.ws_receiver.next().await {
             if let Err(e) = self.handle_message(msg).await {
                 match e {
                     WebSocketError(e) => return Err(e),
@@ -72,7 +78,7 @@ impl GameSession {
 
     async fn send_current_board(&mut self) -> Result<(), axum::Error> {
         let message = self.current_board().as_ws_message();
-        self.socket.send(Message::Text(message)).await
+        self.ws_sender.send(Message::Text(message)).await
     }
 
     async fn handle_message(
@@ -175,7 +181,10 @@ impl GameSession {
 }
 
 pub async fn handle_socket(socket: WebSocket) {
-    let mut session = GameSession::new(socket).await;
+    // split socket to facilitate testing
+    let (ws_sender, ws_receiver) = socket.split();
+
+    let mut session = GameSession::new(ws_sender, ws_receiver);
 
     if let Err(err) = session.run().await {
         eprintln!("WS error: {}", err);
