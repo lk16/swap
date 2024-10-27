@@ -43,6 +43,7 @@ impl Display for HandlerError {
 struct GameSession {
     socket: WebSocket,
     history: Vec<Board>,
+    undone_moves: Vec<Board>, // For undo/redo
 }
 
 impl GameSession {
@@ -50,6 +51,7 @@ impl GameSession {
         Self {
             socket,
             history: vec![Board::new()],
+            undone_moves: vec![],
         }
     }
 
@@ -95,6 +97,7 @@ impl GameSession {
 
         match (command.as_str(), data) {
             ("undo", data) => self.handle_undo((command, data)).await,
+            ("redo", data) => self.handle_redo((command, data)).await,
             ("do_move", data) => self.handle_do_move((command, data)).await,
             ("new_game", data) => self.handle_new_game((command, data)).await,
             ("xot_game", data) => self.handle_xot_game((command, data)).await,
@@ -104,7 +107,16 @@ impl GameSession {
 
     async fn handle_undo(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
         if self.history.len() > 1 {
-            self.history.pop();
+            let undone_move = self.history.pop().unwrap();
+            self.undone_moves.push(undone_move);
+        }
+
+        self.send_state().await.map_err(WebSocketError)
+    }
+
+    async fn handle_redo(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
+        if let Some(redone_move) = self.undone_moves.pop() {
+            self.history.push(redone_move);
         }
 
         self.send_state().await.map_err(WebSocketError)
@@ -128,6 +140,7 @@ impl GameSession {
         if board.is_valid_move(index) {
             board.do_move(index);
             self.history.push(board.clone());
+            self.undone_moves.clear(); // Clear undone moves when a new move is made
         }
 
         self.send_state().await.map_err(WebSocketError)
