@@ -247,8 +247,6 @@ impl Position {
         // Draw
         0
     }
-
-    // TODO add missing tests
 }
 
 #[cfg(test)]
@@ -413,5 +411,91 @@ mod tests {
     #[test]
     fn test_default() {
         assert_eq!(Position::default(), Position::new());
+    }
+
+    #[test]
+    fn test_new_xot() {
+        let position = Position::new_xot();
+        assert_eq!(position.count_discs(), 12);
+    }
+
+    #[test]
+    fn test_count_empty() {
+        let position = Position::new();
+        assert_eq!(position.count_empty(), 60); // 64 - 4 initial discs
+
+        let full_position = Position {
+            player: 0xFFFFFFFFFFFFFFFF,
+            opponent: 0x0000000000000000,
+        };
+        assert_eq!(full_position.count_empty(), 0);
+    }
+
+    #[test]
+    fn test_children_with_index() {
+        let position = Position::new();
+        let children = position.children_with_index();
+
+        // Initial position should have 4 valid moves
+        assert_eq!(children.len(), 4);
+
+        // Verify the indices are correct for initial position
+        let indices: Vec<usize> = children.iter().map(|(i, _)| *i).collect();
+        assert!(indices.contains(&19)); // D3
+        assert!(indices.contains(&26)); // E3
+        assert!(indices.contains(&37)); // F4
+        assert!(indices.contains(&44)); // E5
+    }
+
+    #[test]
+    fn test_children() {
+        let position = Position::new();
+        let children = position.children();
+
+        // Initial position should have 4 valid moves
+        assert_eq!(children.len(), 4);
+
+        // Each child should be a valid position
+        for child in children {
+            assert!(child.count_discs() > position.count_discs());
+        }
+    }
+
+    #[test]
+    fn test_final_score() {
+        // Test player win
+        let player_wins = Position {
+            player: 0x0000000000000007,   // 3 discs
+            opponent: 0x0000000000000001, // 1 disc
+        };
+        assert_eq!(player_wins.final_score(), 62); // 64 - (2 * 1)
+
+        // Test opponent win
+        let opponent_wins = Position {
+            player: 0x0000000000000001,   // 1 disc
+            opponent: 0x0000000000000007, // 3 discs
+        };
+        assert_eq!(opponent_wins.final_score(), -62); // -64 + (2 * 1)
+
+        // Test draw
+        let draw = Position {
+            player: 0x0000000000000003,   // 2 discs
+            opponent: 0x0000000000000003, // 2 discs
+        };
+        assert_eq!(draw.final_score(), 0);
+    }
+
+    #[test]
+    fn test_do_move_cloned() {
+        let position = Position::new();
+        let child = position.do_move_cloned(19); // D3
+
+        // Original position should remain unchanged
+        assert_eq!(position, Position::new());
+
+        // Child position should be modified
+        assert_ne!(child, position);
+        assert_eq!(child.player, 0x0000001000000000);
+        assert_eq!(child.opponent, 0x0000000818080000);
     }
 }
