@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
-use crate::othello::board::{Board, State};
+use crate::othello::board::Board;
+use crate::othello::position::GameState;
 use axum::extract::ws::{Message, WebSocket};
 use futures::{
     stream::{SplitSink, SplitStream},
@@ -154,10 +155,12 @@ impl GameSession {
         let mut board = *self.current_board();
         board.do_move(index);
 
-        match board.as_state() {
-            State::HasMoves(board) => self.history.push(board),
-            State::Finished(board) => self.history.push(board),
-            State::Passed(board) => self.history.push(board),
+        match board.game_state() {
+            GameState::Finished | GameState::HasMoves => self.history.push(board),
+            GameState::Passed => {
+                board.pass();
+                self.history.push(board);
+            }
         }
 
         self.send_current_board().await.map_err(WebSocketError)

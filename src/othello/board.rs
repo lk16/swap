@@ -1,13 +1,7 @@
 use serde_json::json;
 use std::fmt::{self, Display};
 
-use super::position::Position;
-
-pub enum State {
-    HasMoves(Board),
-    Passed(Board),
-    Finished(Board),
-}
+use super::position::{GameState, Position};
 
 #[derive(Clone, Copy)]
 pub struct Board {
@@ -68,20 +62,13 @@ impl Board {
     }
 
     pub fn pass(&mut self) {
+        // TODO add tests
         self.black_to_move = !self.black_to_move;
         self.position.pass();
     }
 
-    pub fn as_state(self) -> State {
-        use super::position::State::*;
-
-        let black_to_move = self.black_to_move;
-
-        match self.position.as_state() {
-            HasMoves(position) => State::HasMoves(Self::combine(position, black_to_move)),
-            Passed(position) => State::Passed(Self::combine(position, !black_to_move)),
-            Finished(position) => State::Finished(Self::combine(position, black_to_move)),
-        }
+    pub fn game_state(&self) -> GameState {
+        self.position.game_state()
     }
 
     pub fn ascii_art(&self) -> String {

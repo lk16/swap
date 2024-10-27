@@ -33,10 +33,10 @@ lazy_static! {
     };
 }
 
-pub enum State {
-    HasMoves(Position),
-    Passed(Position),
-    Finished(Position),
+pub enum GameState {
+    HasMoves,
+    Passed,
+    Finished,
 }
 
 #[derive(Clone, Copy)]
@@ -118,18 +118,19 @@ impl Position {
         std::mem::swap(&mut self.player, &mut self.opponent); // TODO add tests, test that doing this twice doesn't change anything
     }
 
-    pub fn as_state(mut self) -> State {
+    pub fn game_state(&self) -> GameState {
         if self.has_moves() {
-            return State::HasMoves(self);
+            return GameState::HasMoves;
         }
 
-        self.pass();
-        if self.has_moves() {
-            return State::Passed(self);
+        let mut passed = *self;
+        passed.pass();
+
+        if passed.has_moves() {
+            return GameState::Passed;
         }
 
-        self.pass();
-        State::Finished(self)
+        GameState::Finished
     }
 
     pub fn do_move(&mut self, index: usize) {
