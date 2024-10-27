@@ -33,13 +33,14 @@ lazy_static! {
     };
 }
 
+#[derive(PartialEq, Debug)]
 pub enum GameState {
     HasMoves,
     Passed,
     Finished,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Position {
     pub player: u64,
     pub opponent: u64,
@@ -67,7 +68,11 @@ impl Position {
 
     pub fn new_xot() -> Self {
         let n = ThreadRng::default().next_u64() as usize;
-        XOT_POSITIONS[n % XOT_POSITIONS.len()] // TODO add tests
+        XOT_POSITIONS[n % XOT_POSITIONS.len()]
+    }
+
+    pub fn new_from_bitboards(player: u64, opponent: u64) -> Self {
+        Self { player, opponent }
     }
 
     fn shift(bitboard: u64, dir: i32) -> u64 {
@@ -115,7 +120,7 @@ impl Position {
     }
 
     pub fn pass(&mut self) {
-        std::mem::swap(&mut self.player, &mut self.opponent); // TODO add tests, test that doing this twice doesn't change anything
+        std::mem::swap(&mut self.player, &mut self.opponent);
     }
 
     pub fn game_state(&self) -> GameState {
@@ -191,6 +196,10 @@ impl Position {
         }
         output.push_str("+-A-B-C-D-E-F-G-H-+\n");
         output
+    }
+
+    pub fn count_discs(&self) -> u32 {
+        self.player.count_ones() + self.opponent.count_ones()
     }
 }
 
@@ -280,5 +289,81 @@ mod tests {
 ";
         println!("{}", result_white);
         assert_eq!(result_white, expected_output_white);
+    }
+
+    #[test]
+    fn test_new_from_bitboards() {
+        let position = Position::new_from_bitboards(0x1, 0x2);
+        assert_eq!(position.player, 0x1);
+        assert_eq!(position.opponent, 0x2);
+    }
+
+    #[test]
+    fn test_pass() {
+        let mut position = Position::new();
+        let original_player = position.player;
+        let original_opponent = position.opponent;
+
+        position.pass();
+        assert_eq!(position.player, original_opponent);
+        assert_eq!(position.opponent, original_player);
+
+        // Test double pass returns to original position
+        position.pass();
+        assert_eq!(position.player, original_player);
+        assert_eq!(position.opponent, original_opponent);
+    }
+
+    #[test]
+    fn test_game_state() {
+        // Test HasMoves
+        let position = Position::new();
+        assert_eq!(position.game_state(), GameState::HasMoves);
+
+        // Test Passed
+        let passed_position = Position {
+            player: 0x2,
+            opponent: 0x1,
+        };
+        assert_eq!(passed_position.game_state(), GameState::Passed);
+
+        // Test Finished
+        let finished_position = Position {
+            player: 0xFFFFFFFFFFFFFFFF,
+            opponent: 0x0000000000000000,
+        };
+        assert_eq!(finished_position.game_state(), GameState::Finished);
+    }
+
+    #[test]
+    fn test_is_valid_move() {
+        let position = Position::new();
+
+        // Test valid moves for initial position
+        assert!(position.is_valid_move(19)); // D3
+        assert!(position.is_valid_move(26)); // E3
+        assert!(position.is_valid_move(37)); // F4
+        assert!(position.is_valid_move(44)); // E5
+
+        // Test invalid moves
+        assert!(!position.is_valid_move(0)); // A1
+        assert!(!position.is_valid_move(64)); // Out of bounds
+    }
+
+    #[test]
+    fn test_count_discs() {
+        let position = Position::new();
+        assert_eq!(position.count_discs(), 4);
+
+        let full_position = Position {
+            player: 0xFFFFFFFFFFFFFFFF,
+            opponent: 0x0000000000000000,
+        };
+        assert_eq!(full_position.count_discs(), 64);
+    }
+
+    #[test]
+    fn test_default() {
+        assert_eq!(Position::default(), Position::new());
     }
 }

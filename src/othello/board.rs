@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 
 use super::position::{GameState, Position};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Board {
     position: Position,
     black_to_move: bool,
@@ -37,6 +37,17 @@ impl Board {
         }
     }
 
+    pub fn new_from_bitboards(black: u64, white: u64, black_to_move: bool) -> Self {
+        let (player, opponent) = if black_to_move {
+            (black, white)
+        } else {
+            (white, black)
+        };
+
+        let position = Position::new_from_bitboards(player, opponent);
+        Self::combine(position, black_to_move)
+    }
+
     pub fn combine(position: Position, black_to_move: bool) -> Self {
         Self {
             position,
@@ -62,7 +73,6 @@ impl Board {
     }
 
     pub fn pass(&mut self) {
-        // TODO add tests
         self.black_to_move = !self.black_to_move;
         self.position.pass();
     }
@@ -113,6 +123,26 @@ impl Board {
             "moves": moves,
         })
         .to_string()
+    }
+
+    pub fn count_discs(&self) -> u32 {
+        self.position.count_discs()
+    }
+
+    pub fn black_discs(&self) -> u64 {
+        if self.black_to_move {
+            self.position.player
+        } else {
+            self.position.opponent
+        }
+    }
+
+    pub fn white_discs(&self) -> u64 {
+        if self.black_to_move {
+            self.position.opponent
+        } else {
+            self.position.player
+        }
     }
 }
 
@@ -251,5 +281,111 @@ mod tests {
         // Test invalid moves
         assert!(!board.is_valid_move(19)); // D3 (occupied)
         assert!(!board.is_valid_move(44)); // F5 (not valid for white)
+    }
+
+    #[test]
+    fn test_new_xot() {
+        let board = Board::new_xot();
+        assert!(board.black_to_move);
+        assert_eq!(board.count_discs(), 12);
+    }
+
+    #[test]
+    fn test_combine() {
+        let position = Position::new();
+        let board = Board::combine(position, false);
+        assert!(!board.black_to_move);
+        assert_eq!(board.position.player, 0x0000000810000000);
+        assert_eq!(board.position.opponent, 0x0000001008000000);
+    }
+
+    #[test]
+    fn test_pass() {
+        let board = Board::new();
+
+        let mut passed = board.clone();
+        passed.pass();
+
+        assert_eq!(passed.black_discs(), board.black_discs());
+        assert_eq!(passed.white_discs(), board.white_discs());
+        assert!(!passed.black_to_move);
+    }
+
+    #[test]
+    fn test_pass_twice() {
+        let board = Board::new();
+
+        let mut passed = board.clone();
+        passed.pass();
+        passed.pass();
+
+        assert_eq!(passed, board);
+    }
+
+    #[test]
+    fn test_game_state() {
+        // Initial position
+        let board = Board::new();
+        assert_eq!(board.game_state(), GameState::HasMoves);
+
+        // Empty board, nobody can move
+        let board = Board::new_from_bitboards(0, 0, false);
+        assert_eq!(board.game_state(), GameState::Finished);
+
+        // Black has no moves, white has one move
+        let board = Board::new_from_bitboards(0x2, 0x1, true);
+        assert_eq!(board.game_state(), GameState::Passed);
+    }
+
+    #[test]
+    fn test_new_from_bitboards() {
+        let black = 0x0000000810000000; // Standard initial black position
+        let white = 0x0000001008000000; // Standard initial white position
+        let board = Board::new_from_bitboards(black, white, true);
+
+        assert!(board.black_to_move);
+        assert_eq!(board.black_discs(), black);
+        assert_eq!(board.white_discs(), white);
+
+        // Test with different turn
+        let board_white = Board::new_from_bitboards(black, white, false);
+        assert!(!board_white.black_to_move);
+        assert_eq!(board_white.white_discs(), white);
+        assert_eq!(board_white.black_discs(), black);
+    }
+
+    #[test]
+    fn test_count_discs() {
+        // Test initial board position
+        let board = Board::new();
+        assert_eq!(board.count_discs(), 4);
+
+        // Test custom position with more discs
+        let player = 0x000000FF00000000;
+        let opponent = 0x0000000000FF0000;
+        let board = Board::new_from_bitboards(player, opponent, true);
+        assert_eq!(board.count_discs(), 16);
+    }
+
+    #[test]
+    fn test_default() {
+        assert_eq!(Board::default(), Board::new());
+    }
+
+    #[test]
+    fn test_display() {
+        let board = Board::new();
+        let display_output = format!("{}", board);
+        let ascii_art_output = board.ascii_art();
+
+        assert_eq!(display_output, ascii_art_output);
+
+        // Test after a move to ensure Display works in different states
+        let mut moved_board = Board::new();
+        moved_board.do_move(19); // D3
+        let display_output_after_move = format!("{}", moved_board);
+        let ascii_art_output_after_move = moved_board.ascii_art();
+
+        assert_eq!(display_output_after_move, ascii_art_output_after_move);
     }
 }
