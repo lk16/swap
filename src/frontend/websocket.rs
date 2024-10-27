@@ -115,7 +115,6 @@ impl GameSession {
     }
 
     async fn handle_redo(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
-        // TODO redo still has problems
         if let Some(redone_move) = self.undone_moves.pop() {
             self.history.push(redone_move);
         }
@@ -145,6 +144,8 @@ impl GameSession {
             ));
         }
 
+        self.undone_moves.clear();
+
         let mut board = *self.current_board();
         board.do_move(index);
 
@@ -159,11 +160,13 @@ impl GameSession {
 
     async fn handle_new_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
         self.history = vec![Board::new()];
+        self.undone_moves.clear();
         self.send_current_board().await.map_err(WebSocketError)
     }
 
     async fn handle_xot_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
         self.history = vec![Board::new_xot()];
+        self.undone_moves.clear();
         self.send_current_board().await.map_err(WebSocketError)
     }
 
