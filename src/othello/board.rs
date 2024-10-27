@@ -5,8 +5,8 @@ use super::position::{GameState, Position};
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Board {
-    position: Position,
-    black_to_move: bool,
+    pub position: Position,
+    pub black_to_move: bool,
 }
 
 impl Default for Board {

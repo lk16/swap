@@ -40,7 +40,7 @@ function makeMove(index) {
 
     if (cell.classList.contains('valid-move') && playerType === 'human') {
         ws.send(JSON.stringify({
-            do_move: index
+            human_move: index
         }));
     }
 }

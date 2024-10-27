@@ -4,7 +4,7 @@ use crate::othello::board::Board;
 
 pub mod random;
 
-pub trait Bot {
+pub trait Bot: Send {
     // Returns the index of a valid move
     fn get_move(&self, board: &Board) -> usize;
 }
