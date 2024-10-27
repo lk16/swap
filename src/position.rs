@@ -62,6 +62,10 @@ impl Position {
         self.get_moves() != 0
     }
 
+    pub fn is_valid_move(&self, index: usize) -> bool {
+        self.get_moves() & (1u64 << index) != 0 // TODO add tests
+    }
+
     pub fn do_move(&mut self, index: usize) {
         let move_bit = 1u64 << index;
         self.player |= move_bit;

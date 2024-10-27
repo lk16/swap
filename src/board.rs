@@ -38,6 +38,10 @@ impl Board {
         self.position.has_moves()
     }
 
+    pub fn is_valid_move(&self, index: usize) -> bool {
+        self.position.is_valid_move(index) // TODO add tests
+    }
+
     pub fn do_move(&mut self, index: usize) {
         self.position.do_move(index);
         self.black_to_move = !self.black_to_move;

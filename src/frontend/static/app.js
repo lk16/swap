@@ -32,11 +32,15 @@ function updateBoard(gameState) {
 }
 
 function makeMove(index) {
-    ws.send(index.toString());
+    ws.send(JSON.stringify({
+        do_move: index
+    }));
 }
 
 function undoMove() {
-    ws.send('undo');
+    ws.send(JSON.stringify({
+        "undo": null
+    }));
 }
 
 ws.onmessage = (event) => {
