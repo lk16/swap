@@ -3,7 +3,13 @@ use std::fmt::{self, Display};
 
 use super::position::Position;
 
-#[derive(Clone)]
+pub enum State {
+    HasMoves(Board),
+    Passed(Board),
+    Finished(Board),
+}
+
+#[derive(Clone, Copy)]
 pub struct Board {
     position: Position,
     black_to_move: bool,
@@ -37,6 +43,13 @@ impl Board {
         }
     }
 
+    pub fn combine(position: Position, black_to_move: bool) -> Self {
+        Self {
+            position,
+            black_to_move,
+        }
+    }
+
     pub fn get_moves(&self) -> u64 {
         self.position.get_moves()
     }
@@ -52,6 +65,23 @@ impl Board {
     pub fn do_move(&mut self, index: usize) {
         self.position.do_move(index);
         self.black_to_move = !self.black_to_move;
+    }
+
+    pub fn pass(&mut self) {
+        self.black_to_move = !self.black_to_move;
+        self.position.pass();
+    }
+
+    pub fn as_state(self) -> State {
+        use super::position::State::*;
+
+        let black_to_move = self.black_to_move;
+
+        match self.position.as_state() {
+            HasMoves(position) => State::HasMoves(Self::combine(position, black_to_move)),
+            Passed(position) => State::Passed(Self::combine(position, !black_to_move)),
+            Finished(position) => State::Finished(Self::combine(position, black_to_move)),
+        }
     }
 
     pub fn ascii_art(&self) -> String {

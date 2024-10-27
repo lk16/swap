@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::othello::board::Board;
+use crate::othello::board::{Board, State};
 use axum::extract::ws::{Message, WebSocket};
 use serde_json::Value;
 
@@ -56,7 +56,7 @@ impl GameSession {
     }
 
     async fn run(&mut self) -> Result<(), axum::Error> {
-        self.send_state().await?;
+        self.send_current_board().await?;
 
         while let Some(msg) = self.socket.recv().await {
             if let Err(e) = self.handle_message(msg).await {
@@ -70,8 +70,8 @@ impl GameSession {
         Ok(())
     }
 
-    async fn send_state(&mut self) -> Result<(), axum::Error> {
-        let message = self.state().as_ws_message();
+    async fn send_current_board(&mut self) -> Result<(), axum::Error> {
+        let message = self.current_board().as_ws_message();
         self.socket.send(Message::Text(message)).await
     }
 
@@ -111,15 +111,16 @@ impl GameSession {
             self.undone_moves.push(undone_move);
         }
 
-        self.send_state().await.map_err(WebSocketError)
+        self.send_current_board().await.map_err(WebSocketError)
     }
 
     async fn handle_redo(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
+        // TODO redo still has problems
         if let Some(redone_move) = self.undone_moves.pop() {
             self.history.push(redone_move);
         }
 
-        self.send_state().await.map_err(WebSocketError)
+        self.send_current_board().await.map_err(WebSocketError)
     }
 
     async fn handle_do_move(
@@ -136,27 +137,37 @@ impl GameSession {
             }
         };
 
-        let mut board = self.state().clone();
-        if board.is_valid_move(index) {
-            board.do_move(index);
-            self.history.push(board.clone());
-            self.undone_moves.clear(); // Clear undone moves when a new move is made
+        if !self.current_board().is_valid_move(index) {
+            // TODO prevent sending invalid moves from client
+            return Err(HandlerValueError(
+                (key.clone(), value.to_string()),
+                "invalid move".to_string(),
+            ));
         }
 
-        self.send_state().await.map_err(WebSocketError)
+        let mut board = *self.current_board();
+        board.do_move(index);
+
+        match board.as_state() {
+            State::HasMoves(board) => self.history.push(board),
+            State::Finished(board) => self.history.push(board),
+            State::Passed(board) => self.history.push(board),
+        }
+
+        self.send_current_board().await.map_err(WebSocketError)
     }
 
     async fn handle_new_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
         self.history = vec![Board::new()];
-        self.send_state().await.map_err(WebSocketError)
+        self.send_current_board().await.map_err(WebSocketError)
     }
 
     async fn handle_xot_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
         self.history = vec![Board::new_xot()];
-        self.send_state().await.map_err(WebSocketError)
+        self.send_current_board().await.map_err(WebSocketError)
     }
 
-    fn state(&self) -> &Board {
+    fn current_board(&self) -> &Board {
         self.history.last().unwrap()
     }
 }

@@ -5,6 +5,7 @@ use std::fmt::{self, Display};
 
 lazy_static! {
     static ref XOT_POSITIONS: Vec<Position> = {
+        // TODO do not include this 900KB json file in the binary
         let json_str = include_str!("../../assets/xot.json");
         let json: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
 
@@ -25,7 +26,13 @@ lazy_static! {
     };
 }
 
-#[derive(Clone)]
+pub enum State {
+    HasMoves(Position),
+    Passed(Position),
+    Finished(Position),
+}
+
+#[derive(Clone, Copy)]
 pub struct Position {
     pub player: u64,
     pub opponent: u64,
@@ -53,7 +60,7 @@ impl Position {
 
     pub fn new_xot() -> Self {
         let n = ThreadRng::default().next_u64() as usize;
-        XOT_POSITIONS[n % XOT_POSITIONS.len()].clone() // TODO add tests
+        XOT_POSITIONS[n % XOT_POSITIONS.len()] // TODO add tests
     }
 
     fn shift(bitboard: u64, dir: i32) -> u64 {
@@ -94,6 +101,24 @@ impl Position {
 
     pub fn is_valid_move(&self, index: usize) -> bool {
         self.get_moves() & (1u64 << index) != 0 // TODO add tests
+    }
+
+    pub fn pass(&mut self) {
+        std::mem::swap(&mut self.player, &mut self.opponent); // TODO add tests, test that doing this twice doesn't change anything
+    }
+
+    pub fn as_state(mut self) -> State {
+        if self.has_moves() {
+            return State::HasMoves(self);
+        }
+
+        self.pass();
+        if self.has_moves() {
+            return State::Passed(self);
+        }
+
+        self.pass();
+        State::Finished(self)
     }
 
     pub fn do_move(&mut self, index: usize) {
