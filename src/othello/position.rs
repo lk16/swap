@@ -2,12 +2,19 @@ use lazy_static::lazy_static;
 use rand::{rngs::ThreadRng, RngCore};
 use serde_json::Value;
 use std::fmt::{self, Display};
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
 lazy_static! {
     static ref XOT_POSITIONS: Vec<Position> = {
-        // TODO do not include this 900KB json file in the binary
-        let json_str = include_str!("../../assets/xot.json");
-        let json: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
+        let path = Path::new("assets/xot.json");
+        let mut file = File::open(path).expect("Failed to open XOT file");
+        let mut json_str = String::new();
+        file.read_to_string(&mut json_str)
+            .expect("Failed to read XOT file");
+
+        let json: Value = serde_json::from_str(&json_str).expect("Failed to parse JSON");
 
         fn parse_position(v: &Value) -> Position {
             let player = v["player"].as_str().unwrap().trim_start_matches("0x");
