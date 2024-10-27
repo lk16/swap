@@ -79,3 +79,42 @@ body {
 #controls button:hover {
     background-color: #45a049;
 }
+
+#player-select {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+    margin-top: 15px;
+}
+
+#player-select select {
+    width: 100%;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    background-color: #333;
+    color: white;
+    cursor: pointer;
+}
+
+#player-select select:hover {
+    background-color: #444;
+}
+
+#player-select select:focus {
+    outline: none;
+    border-color: #666;
+}
+
+.player-select-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.player-select-group label {
+    color: white;
+    font-size: 14px;
+    margin-left: 2px;
+}
