@@ -1,4 +1,3 @@
-use axum::response::Html;
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::IntoResponse,
@@ -6,8 +5,8 @@ use axum::{
     Router,
 };
 use board::Board;
-use std::fs;
 use std::net::SocketAddr;
+use tower_http::services::ServeDir;
 
 pub mod board;
 pub mod position;
@@ -15,8 +14,8 @@ pub mod position;
 #[tokio::main]
 async fn main() {
     let app = Router::new()
-        .route("/", get(serve_index))
-        .route("/ws", get(ws_handler));
+        .route("/ws", get(ws_handler))
+        .nest_service("/", ServeDir::new("static"));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("Listening on {}", addr);
@@ -24,11 +23,6 @@ async fn main() {
         .serve(app.into_make_service())
         .await
         .unwrap();
-}
-
-async fn serve_index() -> impl IntoResponse {
-    let html_content = fs::read_to_string("static/index.html").expect("Failed to read index.html");
-    Html(html_content)
 }
 
 async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
