@@ -1,8 +1,11 @@
 use super::{board::Board, position::GameState};
+use crate::bot::{get_bot, Bot};
 
 pub struct Game {
     history: Vec<Board>,
     undone_moves: Vec<Board>, // For undo/redo
+    black_bot: Option<Box<dyn Bot>>,
+    white_bot: Option<Box<dyn Bot>>,
 }
 
 impl Default for Game {
@@ -16,11 +19,41 @@ impl Game {
         Self {
             history: vec![Board::new()],
             undone_moves: vec![],
+            black_bot: None,
+            white_bot: None,
+        }
+    }
+
+    pub fn set_black_player(&mut self, bot_name: &str) {
+        self.black_bot = if bot_name == "human" {
+            None
+        } else {
+            get_bot(bot_name)
+        };
+    }
+
+    pub fn set_white_player(&mut self, bot_name: &str) {
+        self.white_bot = if bot_name == "human" {
+            None
+        } else {
+            get_bot(bot_name)
+        };
+    }
+
+    #[allow(clippy::borrowed_box)]
+    pub fn get_current_bot(&self) -> Option<&Box<dyn Bot>> {
+        if self.current_board().black_to_move {
+            self.black_bot.as_ref()
+        } else {
+            self.white_bot.as_ref()
         }
     }
 
     /// Returns true if the undo was successful
-    pub fn undo(&mut self, black_is_human: bool, white_is_human: bool) -> bool {
+    pub fn undo(&mut self) -> bool {
+        let black_is_human = self.black_bot.is_none();
+        let white_is_human = self.white_bot.is_none();
+
         // If both players are bots, don't undo
         if !black_is_human && !white_is_human {
             return false;

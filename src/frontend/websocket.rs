@@ -1,9 +1,8 @@
 use std::fmt::{self, Display};
 use std::time::Duration;
 
-use crate::bot::get_bot;
+use crate::othello::board::Board;
 use crate::othello::game::Game;
-use crate::{bot::Bot, othello::board::Board};
 use axum::extract::ws::{Message, WebSocket};
 use futures::{
     stream::{SplitSink, SplitStream},
@@ -51,10 +50,7 @@ impl Display for HandlerError {
 struct GameSession {
     ws_sender: SplitSink<WebSocket, Message>,
     ws_receiver: SplitStream<WebSocket>,
-
     game: Game,
-    black_bot: Option<Box<dyn Bot>>,
-    white_bot: Option<Box<dyn Bot>>,
 }
 
 impl GameSession {
@@ -63,8 +59,6 @@ impl GameSession {
             ws_sender,
             ws_receiver,
             game: Game::new(),
-            black_bot: None,
-            white_bot: None,
         }
     }
 
@@ -121,22 +115,19 @@ impl GameSession {
     }
 
     async fn handle_undo(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
-        let black_is_human = self.black_bot.is_none();
-        let white_is_human = self.white_bot.is_none();
-
-        if !self.game.undo(black_is_human, white_is_human) {
-            return Ok(());
+        if self.game.undo() {
+            self.send_current_board().await.map_err(WebSocketError)?;
         }
 
-        self.send_current_board().await.map_err(WebSocketError)
+        Ok(())
     }
 
     async fn handle_redo(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
-        if !self.game.redo() {
-            return Ok(());
+        if self.game.redo() {
+            self.send_current_board().await.map_err(WebSocketError)?;
         }
 
-        self.send_current_board().await.map_err(WebSocketError)
+        Ok(())
     }
 
     async fn handle_human_move(
@@ -178,33 +169,12 @@ impl GameSession {
         self.do_bot_move().await
     }
 
-    async fn set_player_bot(
-        bot: &mut Option<Box<dyn Bot>>,
-        (key, value): (&String, &Value),
-    ) -> Result<(), HandlerError> {
-        let name = value.as_str().unwrap();
-
-        if name == "human" {
-            *bot = None;
-            return Ok(());
-        }
-
-        let Some(new_bot) = get_bot(name) else {
-            return Err(HandlerValueError(
-                (key.clone(), value.to_string()),
-                "unknown bot".to_string(),
-            ));
-        };
-
-        *bot = Some(new_bot);
-        Ok(())
-    }
-
     async fn handle_set_black_player(
         &mut self,
         args: (&String, &Value),
     ) -> Result<(), HandlerError> {
-        Self::set_player_bot(&mut self.black_bot, args).await?;
+        let bot_name = args.1.as_str().unwrap();
+        self.game.set_black_player(bot_name);
         self.do_bot_move().await
     }
 
@@ -212,27 +182,21 @@ impl GameSession {
         &mut self,
         args: (&String, &Value),
     ) -> Result<(), HandlerError> {
-        Self::set_player_bot(&mut self.white_bot, args).await?;
+        let bot_name = args.1.as_str().unwrap();
+        self.game.set_white_player(bot_name);
         self.do_bot_move().await
     }
 
     async fn do_bot_move(&mut self) -> Result<(), HandlerError> {
-        // Loop because a bot may have to move again
         loop {
-            let bot = if self.current_board().black_to_move {
-                self.black_bot.as_ref()
-            } else {
-                self.white_bot.as_ref()
-            };
-
-            let Some(bot) = bot else {
-                return Ok(()); // No bot set for player to move
+            let Some(bot) = self.game.get_current_bot() else {
+                return Ok(());
             };
 
             let board = self.current_board();
 
             if !board.has_moves() {
-                return Ok(()); // Bot can't move
+                return Ok(());
             }
 
             let move_index = bot.get_move(&board.position);
@@ -240,7 +204,6 @@ impl GameSession {
 
             self.send_current_board().await.map_err(WebSocketError)?;
 
-            // Sleep to allow human player to see the move
             sleep(Duration::from_millis(100)).await;
         }
     }
