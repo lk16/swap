@@ -6,6 +6,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+use super::board::BLACK;
+
 lazy_static! {
     static ref XOT_POSITIONS: Vec<Position> = {
         let path = Path::new("assets/xot.json");
@@ -54,7 +56,7 @@ impl Default for Position {
 
 impl Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.ascii_art(true))
+        write!(f, "{}", self.ascii_art(BLACK))
     }
 }
 
@@ -173,8 +175,8 @@ impl Position {
         child
     }
 
-    pub fn ascii_art(&self, black_to_move: bool) -> String {
-        let (player_char, opponent_char) = if black_to_move {
+    pub fn ascii_art(&self, turn: usize) -> String {
+        let (player_char, opponent_char) = if turn == BLACK {
             ("○", "●")
         } else {
             ("●", "○")
@@ -251,6 +253,8 @@ impl Position {
 
 #[cfg(test)]
 mod tests {
+    use crate::othello::board::WHITE;
+
     use super::*;
 
     #[test]
@@ -298,7 +302,7 @@ mod tests {
         let position = Position::new();
 
         // Test ascii_art with black to move
-        let result_black = position.ascii_art(true);
+        let result_black = position.ascii_art(BLACK);
         let expected_output_black = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1
@@ -320,7 +324,7 @@ mod tests {
         position.do_move(19); // D3
 
         // Test ascii_art with white to move
-        let result_white = position.ascii_art(false);
+        let result_white = position.ascii_art(WHITE);
         let expected_output_white = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1

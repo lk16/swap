@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 use std::time::Duration;
 
-use crate::othello::board::Board;
+use crate::othello::board::{Board, BLACK, WHITE};
 use crate::othello::game::Game;
 use axum::extract::ws::{Message, WebSocket};
 use futures::{
@@ -174,7 +174,7 @@ impl GameSession {
         args: (&String, &Value),
     ) -> Result<(), HandlerError> {
         let bot_name = args.1.as_str().unwrap();
-        self.game.set_black_player(bot_name);
+        self.game.set_player(BLACK, bot_name);
         self.do_bot_move().await
     }
 
@@ -183,7 +183,7 @@ impl GameSession {
         args: (&String, &Value),
     ) -> Result<(), HandlerError> {
         let bot_name = args.1.as_str().unwrap();
-        self.game.set_white_player(bot_name);
+        self.game.set_player(WHITE, bot_name);
         self.do_bot_move().await
     }
 

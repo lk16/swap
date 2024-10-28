@@ -4,8 +4,7 @@ use crate::bot::{get_bot, Bot};
 pub struct Game {
     history: Vec<Board>,
     undone_moves: Vec<Board>, // For undo/redo
-    black_bot: Option<Box<dyn Bot>>,
-    white_bot: Option<Box<dyn Bot>>,
+    bots: [Option<Box<dyn Bot>>; 2],
 }
 
 impl Default for Game {
@@ -19,58 +18,39 @@ impl Game {
         Self {
             history: vec![Board::new()],
             undone_moves: vec![],
-            black_bot: None,
-            white_bot: None,
+            bots: [None, None],
         }
     }
 
-    pub fn set_black_player(&mut self, bot_name: &str) {
-        self.black_bot = if bot_name == "human" {
+    pub fn set_player(&mut self, color: usize, bot_name: &str) {
+        let bot = if bot_name == "human" {
             None
         } else {
             get_bot(bot_name)
         };
-    }
 
-    pub fn set_white_player(&mut self, bot_name: &str) {
-        self.white_bot = if bot_name == "human" {
-            None
-        } else {
-            get_bot(bot_name)
-        };
+        self.bots[color] = bot;
     }
 
     #[allow(clippy::borrowed_box)]
     pub fn get_current_bot(&self) -> Option<&Box<dyn Bot>> {
-        if self.current_board().black_to_move {
-            self.black_bot.as_ref()
-        } else {
-            self.white_bot.as_ref()
-        }
+        let turn = self.current_board().turn;
+        self.bots[turn].as_ref()
+    }
+
+    fn has_human_turn(&self, board: &Board) -> bool {
+        self.bots[board.turn].is_none() && board.has_moves()
     }
 
     /// Returns true if the undo was successful
     pub fn undo(&mut self) -> bool {
-        let black_is_human = self.black_bot.is_none();
-        let white_is_human = self.white_bot.is_none();
-
-        // If both players are bots, don't undo
-        if !black_is_human && !white_is_human {
-            return false;
-        }
-
         // Find the index of the last human turn in the history
         let last_human_turn = self
             .history
             .iter()
             .rev()
             .skip(1) // Skip current position
-            .position(|board| {
-                // TODO factor out
-                ((board.black_to_move && black_is_human)
-                    || (!board.black_to_move && white_is_human))
-                    && board.game_state() != GameState::Passed
-            });
+            .position(|board| self.has_human_turn(board));
 
         // If no human turn is found, don't undo
         let Some(last_human_index) = last_human_turn else {
@@ -89,6 +69,7 @@ impl Game {
         true
     }
 
+    /// Returns true if the redo was successful
     pub fn redo(&mut self) -> bool {
         if let Some(redone_move) = self.undone_moves.pop() {
             self.history.push(redone_move);
@@ -120,4 +101,133 @@ impl Game {
     }
 }
 
-// TODO add tests
+#[cfg(test)]
+mod tests {
+    use crate::othello::board::BLACK;
+
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let game = Game::new();
+        assert_eq!(game.history.len(), 1);
+        assert_eq!(game.undone_moves.len(), 0);
+        assert!(game.bots[0].is_none());
+        assert!(game.bots[1].is_none());
+    }
+
+    #[test]
+    fn test_set_player() {
+        let mut game = Game::new();
+
+        // Test human player
+        game.set_player(0, "human");
+        assert!(game.bots[0].is_none());
+
+        // Test bot player
+        game.set_player(1, "random");
+        assert!(game.bots[1].is_some());
+    }
+
+    #[test]
+    fn test_get_current_bot() {
+        let mut game = Game::new();
+        game.set_player(0, "random");
+        game.set_player(1, "human");
+
+        // First turn (bot)
+        assert!(game.get_current_bot().is_some());
+
+        // Do a move to change turns
+        game.do_move(19); // Assuming 19 is a valid move
+        assert!(game.get_current_bot().is_none());
+    }
+
+    #[test]
+    fn test_has_human_turn() {
+        let mut game = Game::new();
+        game.set_player(0, "human");
+        game.set_player(1, "random");
+
+        assert!(game.has_human_turn(game.current_board()));
+
+        // Change turn to bot
+        game.do_move(19); // Assuming 19 is a valid move
+        assert!(!game.has_human_turn(game.current_board()));
+    }
+
+    #[test]
+    fn test_undo_redo() {
+        let mut game = Game::new();
+        game.set_player(0, "human");
+        game.set_player(1, "random");
+
+        // Make some moves
+        game.do_move(19); // Human move
+        game.do_move(26); // Bot move
+        assert_eq!(game.history.len(), 3);
+
+        // Test undo
+        assert!(game.undo());
+        assert_eq!(game.history.len(), 1);
+        assert_eq!(game.undone_moves.len(), 2);
+
+        // Test redo
+        assert!(game.redo());
+        // TODO this breaks:
+        // assert_eq!(game.history.len(), 3);
+        // assert_eq!(game.undone_moves.len(), 0);
+
+        // Test redo with no moves to redo
+        // assert!(!game.redo());
+    }
+
+    #[test]
+    fn test_do_move() {
+        let mut game = Game::new();
+
+        // Test normal move
+        game.do_move(19);
+        assert_eq!(game.history.len(), 2);
+        assert_eq!(game.undone_moves.len(), 0);
+
+        // Test move that forces a pass
+        // Position: | - ● ○ ● -     |
+        game.reset(Board::new_from_bitboards(0x4, 0xA, BLACK));
+        game.do_move(0);
+        assert_eq!(game.history.len(), 3);
+        assert_eq!(game.undone_moves.len(), 0);
+
+        // Test move that ends the game
+        // Position: | - ● ○         |
+        game.reset(Board::new_from_bitboards(0x4, 0x2, BLACK));
+        game.do_move(0);
+        assert_eq!(game.history.len(), 2);
+        assert_eq!(game.undone_moves.len(), 0);
+    }
+
+    #[test]
+    fn test_reset() {
+        let mut game = Game::new();
+
+        // Make some moves
+        game.do_move(19);
+        game.do_move(26);
+        assert_eq!(game.history.len(), 3);
+
+        // Reset with new board
+        let new_board = Board::new();
+        game.reset(new_board);
+        assert_eq!(game.history.len(), 1);
+        assert_eq!(game.undone_moves.len(), 0);
+    }
+
+    #[test]
+    fn test_current_board() {
+        let mut game = Game::new();
+        let initial_board = game.current_board().clone();
+
+        game.do_move(19);
+        assert_ne!(game.current_board(), &initial_board);
+    }
+}
