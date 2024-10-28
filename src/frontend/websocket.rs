@@ -178,50 +178,42 @@ impl GameSession {
         self.do_bot_move().await
     }
 
-    async fn handle_set_black_player(
-        &mut self,
+    async fn set_player_bot(
+        bot: &mut Option<Box<dyn Bot>>,
         (key, value): (&String, &Value),
     ) -> Result<(), HandlerError> {
         let name = value.as_str().unwrap();
 
         if name == "human" {
-            self.black_bot = None;
+            *bot = None;
             return Ok(());
         }
 
-        let Some(bot) = get_bot(name) else {
+        let Some(new_bot) = get_bot(name) else {
             return Err(HandlerValueError(
                 (key.clone(), value.to_string()),
                 "unknown bot".to_string(),
             ));
         };
 
-        self.black_bot = Some(bot);
-        self.do_bot_move().await?;
+        *bot = Some(new_bot);
         Ok(())
+    }
+
+    async fn handle_set_black_player(
+        &mut self,
+        args: (&String, &Value),
+    ) -> Result<(), HandlerError> {
+        Self::set_player_bot(&mut self.black_bot, args).await?;
+        self.do_bot_move().await
     }
 
     async fn handle_set_white_player(
         &mut self,
-        (key, value): (&String, &Value),
+        args: (&String, &Value),
     ) -> Result<(), HandlerError> {
-        let name = value.as_str().unwrap();
-
-        if name == "human" {
-            self.white_bot = None;
-            return Ok(());
-        }
-
-        let Some(bot) = get_bot(name) else {
-            return Err(HandlerValueError(
-                (key.clone(), value.to_string()),
-                "unknown bot".to_string(),
-            ));
-        };
-
-        self.white_bot = Some(bot);
-        self.do_bot_move().await?;
-        Ok(())
+        Self::set_player_bot(&mut self.white_bot, args).await?;
+        self.do_bot_move().await
     }
 
     async fn do_bot_move(&mut self) -> Result<(), HandlerError> {
