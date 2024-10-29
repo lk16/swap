@@ -253,6 +253,12 @@ impl Position {
         // Draw
         0
     }
+
+    /// Get the color of a square: 0 for player, 1 for opponent, 2 for empty
+    pub fn get_square_color(&self, index: usize) -> usize {
+        let color = 2 - 2 * ((self.player >> index) & 1) - ((self.opponent >> index) & 1);
+        color as usize
+    }
 }
 
 #[cfg(test)]
@@ -506,5 +512,15 @@ mod tests {
         assert_ne!(child, position);
         assert_eq!(child.player, 0x0000001000000000);
         assert_eq!(child.opponent, 0x0000000818080000);
+    }
+
+    #[test]
+    fn test_get_square_color() {
+        let position = Position::new();
+
+        // Test initial position squares
+        assert_eq!(position.get_square_color(28), 0); // Player disc at D4
+        assert_eq!(position.get_square_color(36), 1); // Opponent disc at D5
+        assert_eq!(position.get_square_color(0), 2); // Empty square at A1
     }
 }
