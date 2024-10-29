@@ -1,5 +1,6 @@
 const board = document.getElementById('board');
 const ws = new WebSocket('ws://localhost:3000/ws');
+let currentPlayer = 'black';
 
 function createBoard() {
     for (let i = 0; i < 64; i++) {
@@ -13,6 +14,8 @@ function createBoard() {
 
 function updateBoard(gameState) {
     const cells = document.querySelectorAll('.cell');
+    currentPlayer = gameState.turn;
+
     cells.forEach((cell, index) => {
         cell.innerHTML = '';
         cell.classList.remove('valid-move');
@@ -33,9 +36,11 @@ function updateBoard(gameState) {
 
 function makeMove(index) {
     const cell = document.querySelector(`.cell[data-index="${index}"]`);
-    if (cell.classList.contains('valid-move')) {
+    const playerType = document.getElementById(`${currentPlayer}-player`).value;
+
+    if (cell.classList.contains('valid-move') && playerType === 'human') {
         ws.send(JSON.stringify({
-            do_move: index
+            human_move: index
         }));
     }
 }
@@ -63,7 +68,6 @@ ws.onmessage = (event) => {
 
 createBoard();
 
-// Add right-click event listener to the board
 board.addEventListener('contextmenu', (e) => {
     e.preventDefault(); // Prevent the default context menu
     undoMove();
@@ -73,3 +77,15 @@ document.getElementById('new-game-btn').addEventListener('click', newGame);
 document.getElementById('xot-game-btn').addEventListener('click', xotGame);
 document.getElementById('undo-btn').addEventListener('click', undoMove);
 document.getElementById('redo-btn').addEventListener('click', redoMove);
+
+document.getElementById('black-player').addEventListener('change', (e) => {
+    ws.send(JSON.stringify({
+        set_black_player: e.target.value
+    }));
+});
+
+document.getElementById('white-player').addEventListener('change', (e) => {
+    ws.send(JSON.stringify({
+        set_white_player: e.target.value
+    }));
+});

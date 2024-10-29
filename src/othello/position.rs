@@ -6,6 +6,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+use super::board::BLACK;
+
 lazy_static! {
     static ref XOT_POSITIONS: Vec<Position> = {
         let path = Path::new("assets/xot.json");
@@ -54,7 +56,7 @@ impl Default for Position {
 
 impl Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.ascii_art(true))
+        write!(f, "{}", self.ascii_art(BLACK))
     }
 }
 
@@ -167,8 +169,14 @@ impl Position {
         std::mem::swap(&mut self.player, &mut self.opponent);
     }
 
-    pub fn ascii_art(&self, black_to_move: bool) -> String {
-        let (player_char, opponent_char) = if black_to_move {
+    pub fn do_move_cloned(&self, index: usize) -> Self {
+        let mut child = *self;
+        child.do_move(index);
+        child
+    }
+
+    pub fn ascii_art(&self, turn: usize) -> String {
+        let (player_char, opponent_char) = if turn == BLACK {
             ("○", "●")
         } else {
             ("●", "○")
@@ -201,10 +209,52 @@ impl Position {
     pub fn count_discs(&self) -> u32 {
         self.player.count_ones() + self.opponent.count_ones()
     }
+
+    pub fn count_empty(&self) -> u32 {
+        64 - self.count_discs()
+    }
+
+    pub fn children_with_index(&self) -> Vec<(usize, Position)> {
+        let moves = self.get_moves();
+
+        (0..64)
+            .filter(|i| moves & (1u64 << i) != 0)
+            .map(|i| (i, self.do_move_cloned(i)))
+            .collect()
+    }
+
+    pub fn children(&self) -> Vec<Position> {
+        let moves = self.get_moves();
+
+        (0..64)
+            .filter(|i| moves & (1u64 << i) != 0)
+            .map(|i| self.do_move_cloned(i))
+            .collect()
+    }
+
+    pub fn final_score(&self) -> isize {
+        let player = self.player.count_ones() as isize;
+        let opponent = self.opponent.count_ones() as isize;
+
+        if player > opponent {
+            // Player wins
+            return 64 - (2 * opponent);
+        }
+
+        if opponent > player {
+            // Opponent wins
+            return -64 + (2 * player);
+        }
+
+        // Draw
+        0
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::othello::board::WHITE;
+
     use super::*;
 
     #[test]
@@ -252,7 +302,7 @@ mod tests {
         let position = Position::new();
 
         // Test ascii_art with black to move
-        let result_black = position.ascii_art(true);
+        let result_black = position.ascii_art(BLACK);
         let expected_output_black = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1
@@ -274,7 +324,7 @@ mod tests {
         position.do_move(19); // D3
 
         // Test ascii_art with white to move
-        let result_white = position.ascii_art(false);
+        let result_white = position.ascii_art(WHITE);
         let expected_output_white = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1
@@ -365,5 +415,91 @@ mod tests {
     #[test]
     fn test_default() {
         assert_eq!(Position::default(), Position::new());
+    }
+
+    #[test]
+    fn test_new_xot() {
+        let position = Position::new_xot();
+        assert_eq!(position.count_discs(), 12);
+    }
+
+    #[test]
+    fn test_count_empty() {
+        let position = Position::new();
+        assert_eq!(position.count_empty(), 60); // 64 - 4 initial discs
+
+        let full_position = Position {
+            player: 0xFFFFFFFFFFFFFFFF,
+            opponent: 0x0000000000000000,
+        };
+        assert_eq!(full_position.count_empty(), 0);
+    }
+
+    #[test]
+    fn test_children_with_index() {
+        let position = Position::new();
+        let children = position.children_with_index();
+
+        // Initial position should have 4 valid moves
+        assert_eq!(children.len(), 4);
+
+        // Verify the indices are correct for initial position
+        let indices: Vec<usize> = children.iter().map(|(i, _)| *i).collect();
+        assert!(indices.contains(&19)); // D3
+        assert!(indices.contains(&26)); // E3
+        assert!(indices.contains(&37)); // F4
+        assert!(indices.contains(&44)); // E5
+    }
+
+    #[test]
+    fn test_children() {
+        let position = Position::new();
+        let children = position.children();
+
+        // Initial position should have 4 valid moves
+        assert_eq!(children.len(), 4);
+
+        // Each child should be a valid position
+        for child in children {
+            assert!(child.count_discs() > position.count_discs());
+        }
+    }
+
+    #[test]
+    fn test_final_score() {
+        // Test player win
+        let player_wins = Position {
+            player: 0x0000000000000007,   // 3 discs
+            opponent: 0x0000000000000001, // 1 disc
+        };
+        assert_eq!(player_wins.final_score(), 62); // 64 - (2 * 1)
+
+        // Test opponent win
+        let opponent_wins = Position {
+            player: 0x0000000000000001,   // 1 disc
+            opponent: 0x0000000000000007, // 3 discs
+        };
+        assert_eq!(opponent_wins.final_score(), -62); // -64 + (2 * 1)
+
+        // Test draw
+        let draw = Position {
+            player: 0x0000000000000003,   // 2 discs
+            opponent: 0x0000000000000003, // 2 discs
+        };
+        assert_eq!(draw.final_score(), 0);
+    }
+
+    #[test]
+    fn test_do_move_cloned() {
+        let position = Position::new();
+        let child = position.do_move_cloned(19); // D3
+
+        // Original position should remain unchanged
+        assert_eq!(position, Position::new());
+
+        // Child position should be modified
+        assert_ne!(child, position);
+        assert_eq!(child.player, 0x0000001000000000);
+        assert_eq!(child.opponent, 0x0000000818080000);
     }
 }
