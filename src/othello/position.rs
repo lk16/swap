@@ -173,6 +173,12 @@ impl Position {
         total_flips
     }
 
+    pub fn undo_move(&mut self, index: usize, flips: u64) {
+        std::mem::swap(&mut self.player, &mut self.opponent);
+        self.player &= !(flips | (1u64 << index));
+        self.opponent |= flips;
+    }
+
     pub fn do_move_cloned(&self, index: usize) -> Self {
         let mut child = *self;
         child.do_move(index);
@@ -522,5 +528,41 @@ mod tests {
         assert_eq!(position.get_square_color(28), 0); // Player disc at D4
         assert_eq!(position.get_square_color(36), 1); // Opponent disc at D5
         assert_eq!(position.get_square_color(0), 2); // Empty square at A1
+    }
+
+    #[test]
+    fn test_undo_move() {
+        let mut position = Position::new();
+        let original = position.clone();
+
+        // Do a move and store the flips
+        let flips = position.do_move(19); // D3
+        assert_ne!(position, original);
+
+        // Undo the move
+        position.undo_move(19, flips);
+
+        // Position should be back to original state
+        assert_eq!(position, original);
+    }
+
+    #[test]
+    fn test_undo_move_multiple() {
+        let mut position = Position::new();
+
+        // Do and undo several moves
+        let moves_and_flips = vec![
+            (19, position.do_move(19)), // D3
+            (26, position.do_move(26)), // E3
+            (20, position.do_move(20)), // E2
+        ];
+
+        // Undo moves in reverse order
+        for (index, flips) in moves_and_flips.into_iter().rev() {
+            position.undo_move(index, flips);
+        }
+
+        // Position should be back to initial state
+        assert_eq!(position, Position::new());
     }
 }
