@@ -140,9 +140,10 @@ impl Position {
         GameState::Finished
     }
 
-    pub fn do_move(&mut self, index: usize) {
+    pub fn do_move(&mut self, index: usize) -> u64 {
         let move_bit = 1u64 << index;
         self.player |= move_bit;
+        let mut total_flips = 0u64;
 
         // Define direction offsets
         const DIRECTIONS: [i32; 8] = [-9, -8, -7, -1, 1, 7, 8, 9];
@@ -162,11 +163,14 @@ impl Position {
             if edge & self.player != 0 {
                 self.player |= flip;
                 self.opponent &= !flip;
+                total_flips |= flip;
             }
         }
 
         // Swap player and opponent
         std::mem::swap(&mut self.player, &mut self.opponent);
+
+        total_flips
     }
 
     pub fn do_move_cloned(&self, index: usize) -> Self {
@@ -291,10 +295,11 @@ mod tests {
     #[test]
     fn test_do_move() {
         let mut position = Position::new();
-        position.do_move(19); // D3
+        let flips = position.do_move(19); // D3
 
         assert_eq!(position.player, 0x0000001000000000);
         assert_eq!(position.opponent, 0x0000000818080000);
+        assert_eq!(flips, 0x0000000008000000); // Verify the flipped disc at D4
     }
 
     #[test]
