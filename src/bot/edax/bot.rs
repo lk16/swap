@@ -11,8 +11,10 @@ pub struct EdaxBot;
 const SCORE_MIN: i16 = -64;
 const SCORE_MAX: i16 = 64;
 
-const MIDGAME_DEPTH: u32 = 5; // TODO see what value is reasonable
+const MIDGAME_DEPTH: u32 = 8;
 const ENDGAME_DEPTH: u32 = 14;
+
+// TODO something is not working, check if weights loaded correctly and add many tests
 
 impl Bot for EdaxBot {
     fn get_move(&self, position: &Position) -> usize {
@@ -43,7 +45,7 @@ struct MidgameSearch {
 }
 
 impl MidgameSearch {
-    // TODO bring better midgame search from Edax
+    // TODO #6 bring better midgame search from Edax
 
     fn new(position: Position) -> Self {
         Self {

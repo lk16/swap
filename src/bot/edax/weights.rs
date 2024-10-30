@@ -24,9 +24,9 @@ const EVAL_PACKED_SIZE: [usize; 13] = [
 
 // feature symmetry packing
 lazy_static! {
-    static ref EVAL_C10: [[usize; 59049]; 2] = {
-        let mut eval_c10 = [[0; 59049]; 2];
-        let mut t = [0; 59049];
+    static ref EVAL_C10: Vec<Vec<usize>> = {
+        let mut eval_c10 = vec![vec![0; 59049]; 2];
+        let mut t = vec![0; 59049];
         let mut n = 0;
 
         for l in 0..59049 {
@@ -51,15 +51,11 @@ lazy_static! {
             eval_c10[0][l] = t[l];
             eval_c10[1][opponent_feature(l, 10)] = t[l];
         }
-
         eval_c10
     };
-}
-
-lazy_static! {
-    static ref EVAL_S10: [[usize; 59049]; 2] = {
-        let mut eval_s10 = [[0; 59049]; 2];
-        let mut t = [0; 59049];
+    static ref EVAL_S10: Vec<Vec<usize>> = {
+        let mut eval_s10 = vec![vec![0; 59049]; 2];
+        let mut t = vec![0; 59049];
         let mut n = 0;
 
         for l in 0..59049 {
@@ -84,15 +80,11 @@ lazy_static! {
             eval_s10[0][l] = t[l];
             eval_s10[1][opponent_feature(l, 10)] = t[l];
         }
-
         eval_s10
     };
-}
-
-lazy_static! {
-    static ref EVAL_C9: [[usize; 19683]; 2] = {
-        let mut eval_c9 = [[0; 19683]; 2];
-        let mut t = [0; 19683];
+    static ref EVAL_C9: Vec<Vec<usize>> = {
+        let mut eval_c9 = vec![vec![0; 19683]; 2];
+        let mut t = vec![0; 19683];
         let mut n = 0;
 
         for l in 0..19683 {
@@ -116,15 +108,11 @@ lazy_static! {
             eval_c9[0][l] = t[l];
             eval_c9[1][opponent_feature(l, 9)] = t[l];
         }
-
         eval_c9
     };
-}
-
-lazy_static! {
-    static ref EVAL_S8: [[usize; 6561]; 2] = {
-        let mut eval_s8 = [[0; 6561]; 2];
-        let mut t = [0; 6561];
+    static ref EVAL_S8: Vec<Vec<usize>> = {
+        let mut eval_s8 = vec![vec![0; 6561]; 2];
+        let mut t = vec![0; 6561];
         let mut n = 0;
 
         for l in 0..6561 {
@@ -147,15 +135,11 @@ lazy_static! {
             eval_s8[0][l] = t[l];
             eval_s8[1][opponent_feature(l, 8)] = t[l];
         }
-
         eval_s8
     };
-}
-
-lazy_static! {
-    static ref EVAL_S7: [[usize; 2187]; 2] = {
-        let mut eval_s7 = [[0; 2187]; 2];
-        let mut t = [0; 2187];
+    static ref EVAL_S7: Vec<Vec<usize>> = {
+        let mut eval_s7 = vec![vec![0; 2187]; 2];
+        let mut t = vec![0; 2187];
         let mut n = 0;
 
         for l in 0..2187 {
@@ -177,15 +161,11 @@ lazy_static! {
             eval_s7[0][l] = t[l];
             eval_s7[1][opponent_feature(l, 7)] = t[l];
         }
-
         eval_s7
     };
-}
-
-lazy_static! {
-    static ref EVAL_S6: [[usize; 729]; 2] = {
-        let mut eval_s6 = [[0; 729]; 2];
-        let mut t = [0; 729];
+    static ref EVAL_S6: Vec<Vec<usize>> = {
+        let mut eval_s6 = vec![vec![0; 729]; 2];
+        let mut t = vec![0; 729];
         let mut n = 0;
 
         for l in 0..729 {
@@ -206,15 +186,11 @@ lazy_static! {
             eval_s6[0][l] = t[l];
             eval_s6[1][opponent_feature(l, 6)] = t[l];
         }
-
         eval_s6
     };
-}
-
-lazy_static! {
-    static ref EVAL_S5: [[usize; 243]; 2] = {
-        let mut eval_s5 = [[0; 243]; 2];
-        let mut t = [0; 243];
+    static ref EVAL_S5: Vec<Vec<usize>> = {
+        let mut eval_s5 = vec![vec![0; 243]; 2];
+        let mut t = vec![0; 243];
         let mut n = 0;
 
         for l in 0..243 {
@@ -234,15 +210,11 @@ lazy_static! {
             eval_s5[0][l] = t[l];
             eval_s5[1][opponent_feature(l, 5)] = t[l];
         }
-
         eval_s5
     };
-}
-
-lazy_static! {
-    static ref EVAL_S4: [[usize; 81]; 2] = {
-        let mut eval_s4 = [[0; 81]; 2];
-        let mut t = [0; 81];
+    static ref EVAL_S4: Vec<Vec<usize>> = {
+        let mut eval_s4 = vec![vec![0; 81]; 2];
+        let mut t = vec![0; 81];
         let mut n = 0;
 
         for l in 0..81 {
@@ -258,7 +230,6 @@ lazy_static! {
             eval_s4[0][l] = t[l];
             eval_s4[1][opponent_feature(l, 4)] = t[l];
         }
-
         eval_s4
     };
 }
