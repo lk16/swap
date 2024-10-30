@@ -206,10 +206,10 @@ const EVAL_OFFSET: [i32; EVAL_N_FEATURES] = [
 #[derive(Clone, PartialEq, Debug)]
 pub struct Eval {
     /// The features of the position
-    features: [i32; EVAL_N_FEATURES],
+    pub features: [i32; EVAL_N_FEATURES],
 
     /// The player to evaluate from
-    player: i32,
+    pub player: i32,
 }
 
 impl Eval {

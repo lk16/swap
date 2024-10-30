@@ -264,7 +264,7 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub static ref EVAL_WEIGHTS: Vec<Vec<Vec<i16>>> = load_eval().unwrap();
+    pub static ref EVAL_WEIGHT: Vec<Vec<Vec<i16>>> = load_eval().unwrap();
 }
 
 pub fn load_eval() -> Result<Vec<Vec<Vec<i16>>>, std::io::Error> {
