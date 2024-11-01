@@ -69,7 +69,7 @@ const G8: usize = 62;
 const H8: usize = 63;
 
 /// The number of features in the evaluation
-const EVAL_N_FEATURES: usize = 47;
+pub const EVAL_N_FEATURES: usize = 47;
 
 lazy_static! {
     static ref EVAL_F2X: [Vec<usize>; EVAL_N_FEATURES] = [

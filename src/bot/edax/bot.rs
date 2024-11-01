@@ -3,18 +3,18 @@ use crate::othello::position::Position;
 
 use crate::bot::Bot;
 
-use super::eval::Eval;
+use super::eval::{Eval, EVAL_N_FEATURES};
 use super::weights::EVAL_WEIGHT;
 
 pub struct EdaxBot;
 
-const SCORE_MIN: i16 = -64;
-const SCORE_MAX: i16 = 64;
+const SCORE_MIN: i32 = -64;
+const SCORE_MAX: i32 = 64;
 
 const MIDGAME_DEPTH: u32 = 8;
 const ENDGAME_DEPTH: u32 = 14;
 
-// TODO something is not working, check if weights loaded correctly and add many tests
+// TODO check if weights loaded correctly and add many tests
 
 impl Bot for EdaxBot {
     fn get_move(&self, position: &Position) -> usize {
@@ -97,7 +97,7 @@ impl MidgameSearch {
         best_move
     }
 
-    fn negamax(&mut self, depth: u32, mut alpha: i16, beta: i16) -> i16 {
+    fn negamax(&mut self, depth: u32, mut alpha: i32, beta: i32) -> i32 {
         if depth == 0 {
             return self.heuristic();
         }
@@ -111,7 +111,7 @@ impl MidgameSearch {
 
             if self.position.get_moves() == 0 {
                 // Game is over, return final evaluation
-                let score = self.position.final_score() as i16;
+                let score = self.position.final_score() as i32;
                 self.pass();
                 return score;
             }
@@ -141,57 +141,17 @@ impl MidgameSearch {
         alpha
     }
 
-    fn heuristic(&self) -> i16 {
-        let w = &EVAL_WEIGHT[self.eval.player as usize][(60 - self.n_empties) as usize];
+    fn heuristic(&self) -> i32 {
+        let player_index = self.eval.player as usize;
+        let empty_index = (60 - self.n_empties) as usize;
+
+        let w = &EVAL_WEIGHT[player_index][empty_index];
         let f = &self.eval.features;
 
-        let mut score = w[f[0] as usize]
-            + w[f[1] as usize]
-            + w[f[2] as usize]
-            + w[f[3] as usize]
-            + w[f[4] as usize]
-            + w[f[5] as usize]
-            + w[f[6] as usize]
-            + w[f[7] as usize]
-            + w[f[8] as usize]
-            + w[f[9] as usize]
-            + w[f[10] as usize]
-            + w[f[11] as usize]
-            + w[f[12] as usize]
-            + w[f[13] as usize]
-            + w[f[14] as usize]
-            + w[f[15] as usize]
-            + w[f[16] as usize]
-            + w[f[17] as usize]
-            + w[f[18] as usize]
-            + w[f[19] as usize]
-            + w[f[20] as usize]
-            + w[f[21] as usize]
-            + w[f[22] as usize]
-            + w[f[23] as usize]
-            + w[f[24] as usize]
-            + w[f[25] as usize]
-            + w[f[26] as usize]
-            + w[f[27] as usize]
-            + w[f[28] as usize]
-            + w[f[29] as usize]
-            + w[f[30] as usize]
-            + w[f[31] as usize]
-            + w[f[32] as usize]
-            + w[f[33] as usize]
-            + w[f[34] as usize]
-            + w[f[35] as usize]
-            + w[f[36] as usize]
-            + w[f[37] as usize]
-            + w[f[38] as usize]
-            + w[f[39] as usize]
-            + w[f[40] as usize]
-            + w[f[41] as usize]
-            + w[f[42] as usize]
-            + w[f[43] as usize]
-            + w[f[44] as usize]
-            + w[f[45] as usize]
-            + w[f[46] as usize];
+        let mut score = 0;
+        for i in 0..EVAL_N_FEATURES {
+            score += w[f[i] as usize] as i32;
+        }
 
         if score > 0 {
             score += 64;
