@@ -189,11 +189,11 @@ impl GameSession {
 
     async fn do_bot_move(&mut self) -> Result<(), HandlerError> {
         loop {
+            let board = *self.current_board();
+
             let Some(bot) = self.game.get_current_bot() else {
                 return Ok(());
             };
-
-            let board = self.current_board();
 
             if !board.has_moves() {
                 return Ok(());

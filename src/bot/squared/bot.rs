@@ -1,16 +1,17 @@
-use crate::bot::squared::endgame::EndgameSearch;
+// This is inspired by my earlier project Squared, see http://github.com/lk16/squared
+
+use super::endgame::EndgameSearch;
+use super::midgame::MidgameSearch;
 use crate::othello::position::Position;
 
 use crate::bot::Bot;
 
-use super::midgame::MidgameSearch;
+pub struct SquaredBot;
 
-pub struct EdaxBot;
+pub static MIDGAME_DEPTH: u32 = 8;
+pub static ENDGAME_DEPTH: u32 = 14;
 
-pub const MIDGAME_DEPTH: u32 = 8;
-pub const ENDGAME_DEPTH: u32 = 14;
-
-impl Bot for EdaxBot {
+impl Bot for SquaredBot {
     fn get_move(&mut self, position: &Position) -> usize {
         let moves = position.get_moves();
 
