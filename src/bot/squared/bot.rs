@@ -8,7 +8,7 @@ use crate::bot::Bot;
 
 pub struct SquaredBot;
 
-pub static MIDGAME_DEPTH: u32 = 8;
+pub static MIDGAME_DEPTH: u32 = 12;
 pub static ENDGAME_DEPTH: u32 = 14;
 
 impl Bot for SquaredBot {

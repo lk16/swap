@@ -92,21 +92,11 @@ impl Position {
     }
 
     pub fn get_moves(&self) -> u64 {
-        let empty = !(self.player | self.opponent);
-        let mut moves = 0;
+        get_moves(self.player, self.opponent)
+    }
 
-        // Define direction offsets
-        const DIRECTIONS: [i32; 8] = [-9, -8, -7, -1, 1, 7, 8, 9];
-
-        for dir in DIRECTIONS {
-            let mut candidates = Self::shift(self.player, dir) & self.opponent;
-
-            while candidates != 0 {
-                moves |= empty & Self::shift(candidates, dir);
-                candidates = Self::shift(candidates, dir) & self.opponent;
-            }
-        }
-        moves
+    pub fn get_opponent_moves(&self) -> u64 {
+        get_moves(self.opponent, self.player)
     }
 
     pub fn has_moves(&self) -> bool {
@@ -265,6 +255,24 @@ impl Position {
         let color = 2 - 2 * ((self.player >> index) & 1) - ((self.opponent >> index) & 1);
         color as usize
     }
+}
+
+pub fn get_moves(player: u64, opponent: u64) -> u64 {
+    let empty = !(player | opponent);
+    let mut moves = 0;
+
+    // Define direction offsets
+    const DIRECTIONS: [i32; 8] = [-9, -8, -7, -1, 1, 7, 8, 9];
+
+    for dir in DIRECTIONS {
+        let mut candidates = Position::shift(player, dir) & opponent;
+
+        while candidates != 0 {
+            moves |= empty & Position::shift(candidates, dir);
+            candidates = Position::shift(candidates, dir) & opponent;
+        }
+    }
+    moves
 }
 
 #[cfg(test)]
@@ -564,5 +572,27 @@ mod tests {
 
         // Position should be back to initial state
         assert_eq!(position, Position::new());
+    }
+
+    #[test]
+    fn test_get_opponent_moves() {
+        let mut position = Position::new();
+
+        let found = position.get_opponent_moves();
+
+        position.pass();
+        let expected = position.get_moves();
+
+        assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn test_get_moves_function() {
+        let position = Position::new();
+
+        let expected = position.get_moves();
+        let found = get_moves(position.player, position.opponent);
+
+        assert_eq!(found, expected);
     }
 }

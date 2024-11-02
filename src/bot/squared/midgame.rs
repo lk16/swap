@@ -85,20 +85,16 @@ impl MidgameSearch {
     }
 
     fn heuristic(position: &Position) -> isize {
-        // Count corners for both players
-        let corners = 0x8100000000000081u64; // Mask for corner positions
-        let player_corners = (position.player & corners).count_ones() as isize;
-        let opponent_corners = (position.opponent & corners).count_ones() as isize;
+        const CORNERS: u64 = 0x8100000000000081u64; // Mask for corner positions
 
+        // Calculate corner difference
+        let player_corners = (position.player & CORNERS).count_ones() as isize;
+        let opponent_corners = (position.opponent & CORNERS).count_ones() as isize;
         let corner_diff = player_corners - opponent_corners;
 
         // Calculate move difference
         let player_moves = position.get_moves().count_ones() as isize;
-
-        let mut opponent_position = *position;
-        opponent_position.pass();
-        let opponent_moves = opponent_position.get_moves().count_ones() as isize;
-
+        let opponent_moves = position.get_opponent_moves().count_ones() as isize;
         let move_diff = player_moves - opponent_moves;
 
         // Final heuristic calculation
