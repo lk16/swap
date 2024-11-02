@@ -12,6 +12,10 @@ impl Bot for RandomBot {
     fn get_move(&self, position: &Position) -> usize {
         let moves = position.get_moves();
 
+        if moves == 0 {
+            panic!("No moves available");
+        }
+
         let move_count = moves.count_ones() as usize;
         let n = ThreadRng::default().next_u64() as usize % move_count;
 

@@ -15,6 +15,10 @@ impl Bot for SquaredBot {
     fn get_move(&self, position: &Position) -> usize {
         let moves = position.get_moves();
 
+        if moves == 0 {
+            panic!("No moves available");
+        }
+
         if moves.count_ones() == 1 {
             return moves.trailing_zeros() as usize;
         }
@@ -102,7 +106,8 @@ impl SquaredBot {
         (3 * corner_diff) + move_diff
     }
 
-    fn endgame_get_move(position: &Position) -> usize {
+    // #5 bring from Edax, make this private again
+    pub fn endgame_get_move(position: &Position) -> usize {
         let children = position.children_with_index();
 
         let (mut best_move, first_child) = children.first().unwrap();
