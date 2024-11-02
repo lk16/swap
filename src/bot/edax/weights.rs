@@ -13,12 +13,12 @@ const EVAL_N_WEIGHT: usize = 226315;
 const EVAL_N_PLY: usize = 61;
 
 /** feature size */
-const EVAL_SIZE: [usize; 13] = [
+pub const EVAL_SIZE: [usize; 13] = [
     19683, 59049, 59049, 59049, 6561, 6561, 6561, 6561, 2187, 729, 243, 81, 1,
 ];
 
 /** packed feature size */
-const EVAL_PACKED_SIZE: [usize; 13] = [
+pub const EVAL_PACKED_SIZE: [usize; 13] = [
     10206, 29889, 29646, 29646, 3321, 3321, 3321, 3321, 1134, 378, 135, 45, 1,
 ];
 
@@ -297,7 +297,7 @@ pub fn load_eval() -> Result<Vec<Vec<Vec<i16>>>, std::io::Error> {
 
         // Convert bytes to i16 weights
         for i in 0..n_w {
-            let val = i16::from_le_bytes([bytes[i * 2], bytes[i * 2 + 1]]);
+            let val = i16::from_be_bytes([bytes[i * 2], bytes[i * 2 + 1]]);
             w[i] = if edax_header == XADE {
                 val.swap_bytes()
             } else {
