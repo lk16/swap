@@ -397,3 +397,30 @@ fn opponent_feature(feature: usize, feature_size: usize) -> usize {
         f
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_eval_weights_first_10_values() {
+        // Test first 10 values for a few representative plies
+        // PLY 0
+        let ply0_p0 = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let ply0_p1 = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        assert_eq!(&EVAL_WEIGHT[0][0][0..10], &ply0_p0);
+        assert_eq!(&EVAL_WEIGHT[1][0][0..10], &ply0_p1);
+
+        // PLY 1
+        let ply1_p0 = vec![43, 33, -18, 6, 21, -23, 1, 29, -20, 6];
+        let ply1_p1 = vec![-76, -62, -16, -43, -51, -10, -53, -66, -2, -43];
+        assert_eq!(&EVAL_WEIGHT[0][1][0..10], &ply1_p0);
+        assert_eq!(&EVAL_WEIGHT[1][1][0..10], &ply1_p1);
+
+        // PLY 60 (final ply)
+        let ply60_p0 = vec![134, 72, -5, 82, 13, -10, -7, -12, -16, 82];
+        let ply60_p1 = vec![-190, -106, -11, -122, -39, -6, -7, -5, 0, -122];
+        assert_eq!(&EVAL_WEIGHT[0][60][0..10], &ply60_p0);
+        assert_eq!(&EVAL_WEIGHT[1][60][0..10], &ply60_p1);
+    }
+}

@@ -18,5 +18,11 @@ jobs:
           pre-commit run --all-files
       - name: Build
         run: cargo build --manifest-path Cargo.toml
+      - name: Download and prepare eval.dat
+        run: |
+          wget -q https://github.com/lk16/swap/releases/download/v0.0.0/eval.7z
+          sudo apt-get install p7zip-full
+          7z x eval.7z > /dev/null
+          mv data/eval.dat .
       - name: Test
-        run: cargo test --manifest-path Cargo.toml --color always
+        run: cargo test --manifest-path Cargo.toml
