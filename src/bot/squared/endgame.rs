@@ -34,7 +34,7 @@ impl EndgameSearch {
         print_search_header("SquaredBot", true, self.position.count_empty());
         for (i, (move_, child)) in children.iter().enumerate() {
             let start = Instant::now();
-            let score = -self.negamax(child, -MAX_ENDGAME_SCORE, -alpha);
+            let score = -self.negamax(*child, -MAX_ENDGAME_SCORE, -alpha);
             let duration = start.elapsed();
 
             print_move_stats(self.nodes, i, children.len(), score, alpha, duration);
@@ -52,7 +52,7 @@ impl EndgameSearch {
         best_move
     }
 
-    fn negamax(&mut self, position: &Position, mut alpha: isize, beta: isize) -> isize {
+    fn negamax(&mut self, mut position: Position, mut alpha: isize, beta: isize) -> isize {
         self.nodes += 1;
 
         let children = position.children();
@@ -60,19 +60,17 @@ impl EndgameSearch {
         // If no moves available
         if children.is_empty() {
             // Check if the game is finished
-            let mut passed_position = *position;
-            passed_position.pass();
-
-            if passed_position.get_moves() == 0 {
+            if position.get_opponent_moves() == 0 {
                 // Game is over, return final evaluation
                 return position.final_score();
             }
 
             // Recursively evaluate after passing
-            return -self.negamax(&passed_position, -beta, -alpha);
+            position.pass();
+            return -self.negamax(position, -beta, -alpha);
         }
 
-        for child in &children {
+        for child in children {
             let score = -self.negamax(child, -beta, -alpha);
             alpha = alpha.max(score);
 
@@ -123,7 +121,7 @@ mod tests {
                     let mut search = EndgameSearch::new(&child);
 
                     let start = Instant::now();
-                    let score = -search.negamax(&child, MIN_ENDGAME_SCORE, MAX_ENDGAME_SCORE);
+                    let score = -search.negamax(child, MIN_ENDGAME_SCORE, MAX_ENDGAME_SCORE);
                     let duration = start.elapsed();
 
                     print_move_stats(search.nodes, 0, 1, score, MIN_ENDGAME_SCORE, duration);
