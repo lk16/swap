@@ -13,17 +13,23 @@ pub struct EndgameSearch {
     position: Position,
 }
 
+impl Default for EndgameSearch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EndgameSearch {
-    pub fn new(position: &Position) -> Self {
+    pub fn new() -> Self {
         Self {
             nodes: 0,
-            position: *position,
+            position: Position::new(),
         }
     }
 
     // TODO #5 bring from Edax, make this private again
-    pub fn get_move(&mut self) -> usize {
-        let children = self.position.children_with_index();
+    pub fn get_move(&mut self, position: &Position) -> usize {
+        let children = position.children_with_index();
 
         let mut best_move = children.first().unwrap().0;
         let mut alpha = MIN_ENDGAME_SCORE;
@@ -31,10 +37,11 @@ impl EndgameSearch {
         let mut total_nodes = 0;
         let mut total_duration = Duration::ZERO;
 
-        print_search_header("SquaredBot", true, self.position.count_empty());
+        print_search_header("SquaredBot", true, position.count_empty());
         for (i, (move_, child)) in children.iter().enumerate() {
             let start = Instant::now();
-            let score = -self.negamax(*child, -MAX_ENDGAME_SCORE, -alpha);
+            self.position = *child;
+            let score = -self.negamax(-MAX_ENDGAME_SCORE, -alpha);
             let duration = start.elapsed();
 
             print_move_stats(self.nodes, i, children.len(), score, alpha, duration);
@@ -52,31 +59,40 @@ impl EndgameSearch {
         best_move
     }
 
-    fn negamax(&mut self, mut position: Position, mut alpha: isize, beta: isize) -> isize {
+    fn negamax(&mut self, mut alpha: isize, beta: isize) -> isize {
         self.nodes += 1;
 
-        let children = position.children();
+        let mut remaining_moves = self.position.get_moves();
 
         // If no moves available
-        if children.is_empty() {
+        if remaining_moves == 0 {
             // Check if the game is finished
-            if position.get_opponent_moves() == 0 {
+            if self.position.get_opponent_moves() == 0 {
                 // Game is over, return final evaluation
-                return position.final_score();
+                return self.position.final_score();
             }
 
             // Recursively evaluate after passing
-            position.pass();
-            return -self.negamax(position, -beta, -alpha);
+            self.position.pass();
+            let score = -self.negamax(-beta, -alpha);
+            self.position.pass();
+            return score;
         }
 
-        for child in children {
-            let score = -self.negamax(child, -beta, -alpha);
+        while remaining_moves != 0 {
+            let move_ = remaining_moves.trailing_zeros() as usize;
+
+            let flipped = self.position.do_move(move_);
+            let score = -self.negamax(-beta, -alpha);
+            self.position.undo_move(move_, flipped);
+
             alpha = alpha.max(score);
 
             if alpha >= beta {
                 break; // Beta cutoff
             }
+
+            remaining_moves &= remaining_moves - 1;
         }
 
         alpha
@@ -99,7 +115,7 @@ mod tests {
 
         let problems: Vec<_> = parse_ffo_problems()
             .into_iter()
-            .filter(|p| p.depth <= 14)
+            .filter(|p| p.depth <= 16)
             .collect();
 
         for (problem_id, problem) in problems.iter().enumerate() {
@@ -118,10 +134,11 @@ mod tests {
                 .for_each(|(&move_, &expected_score)| {
                     let child = problem.position.do_move_cloned(move_);
 
-                    let mut search = EndgameSearch::new(&child);
+                    let mut search = EndgameSearch::new();
+                    search.position = child;
 
                     let start = Instant::now();
-                    let score = -search.negamax(child, MIN_ENDGAME_SCORE, MAX_ENDGAME_SCORE);
+                    let score = -search.negamax(MIN_ENDGAME_SCORE, MAX_ENDGAME_SCORE);
                     let duration = start.elapsed();
 
                     print_move_stats(search.nodes, 0, 1, score, MIN_ENDGAME_SCORE, duration);

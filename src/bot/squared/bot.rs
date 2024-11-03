@@ -28,7 +28,6 @@ impl Bot for SquaredBot {
             return search.get_move();
         }
 
-        let mut search = EndgameSearch::new(position);
-        search.get_move()
+        EndgameSearch::new().get_move(position)
     }
 }
