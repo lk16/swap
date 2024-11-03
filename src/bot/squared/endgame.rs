@@ -84,3 +84,60 @@ impl EndgameSearch {
         alpha
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::othello::ffo_problems::parse_ffo_problems;
+
+    #[test]
+    fn test_ffo_problems() {
+        if std::env::var("RUN_FFO_TESTS").is_err() {
+            println!("Skipping FFO tests. Set RUN_FFO_TESTS environment variable to run them.");
+            return;
+        }
+
+        use rayon::prelude::*;
+
+        let problems: Vec<_> = parse_ffo_problems()
+            .into_iter()
+            .filter(|p| p.depth <= 14)
+            .collect();
+
+        for (problem_id, problem) in problems.iter().enumerate() {
+            println!(
+                "Testing problem {:2}/{:2}, line {:2}, depth {:2}",
+                problem_id + 1,
+                problems.len(),
+                problem.line_number,
+                problem.depth,
+            );
+
+            problem
+                .solutions
+                .iter()
+                .par_bridge()
+                .for_each(|(&move_, &expected_score)| {
+                    let child = problem.position.do_move_cloned(move_);
+
+                    let mut search = EndgameSearch::new(&child);
+
+                    let start = Instant::now();
+                    let score = -search.negamax(&child, MIN_ENDGAME_SCORE, MAX_ENDGAME_SCORE);
+                    let duration = start.elapsed();
+
+                    print_move_stats(search.nodes, 0, 1, score, MIN_ENDGAME_SCORE, duration);
+
+                    assert_eq!(
+                        score,
+                        expected_score,
+                        "Problem {}, move {} failed: expected {}, got {}",
+                        problem_id + 1,
+                        move_,
+                        expected_score,
+                        score
+                    );
+                });
+        }
+    }
+}
