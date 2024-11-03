@@ -7,9 +7,10 @@ use std::io::Read;
 use std::path::Path;
 
 use super::board::BLACK;
+use super::get_moves;
 
 lazy_static! {
-    static ref XOT_POSITIONS: Vec<Position> = {
+    pub static ref XOT_POSITIONS: Vec<Position> = {
         let path = Path::new("assets/xot.json");
         let mut file = File::open(path).expect("Failed to open XOT file");
         let mut json_str = String::new();
@@ -33,6 +34,26 @@ lazy_static! {
             .map(parse_position)
             .collect()
     };
+}
+
+pub fn print_bitset(bitset: u64) {
+    let mut output = String::new();
+    output.push_str("+-A-B-C-D-E-F-G-H-+\n");
+    for row in 0..8 {
+        output.push_str(&format!("{} ", row + 1));
+        for col in 0..8 {
+            let index = row * 8 + col;
+            let mask = 1u64 << index;
+            if bitset & mask != 0 {
+                output.push_str("● ");
+            } else {
+                output.push_str("  ");
+            }
+        }
+        output.push_str(&format!("{}\n", row + 1));
+    }
+    output.push_str("+-A-B-C-D-E-F-G-H-+\n");
+    println!("{}", output);
 }
 
 #[derive(PartialEq, Debug)]
@@ -77,7 +98,7 @@ impl Position {
         Self { player, opponent }
     }
 
-    fn shift(bitboard: u64, dir: i32) -> u64 {
+    pub fn shift(bitboard: u64, dir: i32) -> u64 {
         match dir {
             -9 => (bitboard & 0xfefefefefefefefe) << 7,
             -8 => bitboard << 8,
@@ -92,11 +113,11 @@ impl Position {
     }
 
     pub fn get_moves(&self) -> u64 {
-        get_moves(self.player, self.opponent)
+        get_moves::get_moves(self.player, self.opponent)
     }
 
     pub fn get_opponent_moves(&self) -> u64 {
-        get_moves(self.opponent, self.player)
+        get_moves::get_moves(self.opponent, self.player)
     }
 
     pub fn has_moves(&self) -> bool {
@@ -255,24 +276,6 @@ impl Position {
         let color = 2 - 2 * ((self.player >> index) & 1) - ((self.opponent >> index) & 1);
         color as usize
     }
-}
-
-pub fn get_moves(player: u64, opponent: u64) -> u64 {
-    let empty = !(player | opponent);
-    let mut moves = 0;
-
-    // Define direction offsets
-    const DIRECTIONS: [i32; 8] = [-9, -8, -7, -1, 1, 7, 8, 9];
-
-    for dir in DIRECTIONS {
-        let mut candidates = Position::shift(player, dir) & opponent;
-
-        while candidates != 0 {
-            moves |= empty & Position::shift(candidates, dir);
-            candidates = Position::shift(candidates, dir) & opponent;
-        }
-    }
-    moves
 }
 
 #[cfg(test)]
@@ -582,16 +585,6 @@ mod tests {
 
         position.pass();
         let expected = position.get_moves();
-
-        assert_eq!(found, expected);
-    }
-
-    #[test]
-    fn test_get_moves_function() {
-        let position = Position::new();
-
-        let expected = position.get_moves();
-        let found = get_moves(position.player, position.opponent);
 
         assert_eq!(found, expected);
     }
