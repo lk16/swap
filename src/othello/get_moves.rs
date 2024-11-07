@@ -55,11 +55,11 @@ pub fn get_moves_fancy(player: u64, opponent: u64) -> u64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::othello::position::{print_bitset, Position, XOT_POSITIONS};
 
-    fn move_test_cases() -> Vec<Position> {
+    pub fn move_test_cases() -> Vec<Position> {
         const DIRECTIONS: [(i32, i32); 8] = [
             (-1, -1),
             (-1, 0),

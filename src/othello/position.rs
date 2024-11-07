@@ -7,6 +7,7 @@ use std::io::Read;
 use std::path::Path;
 
 use super::board::BLACK;
+use super::do_move::do_move;
 use super::get_moves;
 
 lazy_static! {
@@ -152,36 +153,7 @@ impl Position {
     }
 
     pub fn do_move(&mut self, index: usize) -> u64 {
-        let move_bit = 1u64 << index;
-        self.player |= move_bit;
-        let mut total_flips = 0u64;
-
-        // Define direction offsets
-        const DIRECTIONS: [i32; 8] = [-9, -8, -7, -1, 1, 7, 8, 9];
-
-        for &dir in &DIRECTIONS {
-            let mut flip = 0u64;
-            let mut edge = move_bit;
-
-            loop {
-                edge = Self::shift(edge, dir);
-                if edge & self.opponent == 0 {
-                    break;
-                }
-                flip |= edge;
-            }
-
-            if edge & self.player != 0 {
-                self.player |= flip;
-                self.opponent &= !flip;
-                total_flips |= flip;
-            }
-        }
-
-        // Swap player and opponent
-        std::mem::swap(&mut self.player, &mut self.opponent);
-
-        total_flips
+        do_move(self, index)
     }
 
     pub fn undo_move(&mut self, index: usize, flips: u64) {
