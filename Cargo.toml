@@ -3,6 +3,11 @@ name = "swap"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+lto = true      # enable link time optimization
+panic = "abort" # removes panic unwinding code
+strip = true    # strips symbols from binary
+
 [dependencies]
 axum = { version = "0.6", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
