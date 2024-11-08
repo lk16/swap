@@ -1,3 +1,4 @@
+pub mod edax_bitscan;
 pub mod edax_slow;
 pub mod simple;
 
