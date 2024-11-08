@@ -7,8 +7,8 @@ use super::midgame::MidgameSearch;
 
 pub struct EdaxBot;
 
-pub const MIDGAME_DEPTH: u32 = 8;
-pub const ENDGAME_DEPTH: u32 = 14;
+pub const MIDGAME_DEPTH: u32 = 10;
+pub const ENDGAME_DEPTH: u32 = 18;
 
 impl Bot for EdaxBot {
     fn get_move(&mut self, position: &Position) -> usize {

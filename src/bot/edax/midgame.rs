@@ -59,7 +59,6 @@ impl MidgameSearch {
         for (i, (move_, child)) in children.iter().enumerate() {
             let start = Instant::now();
 
-            // TODO make function
             self.eval = Eval::new(child);
             self.n_empties = child.count_empty();
             self.position = *child;
