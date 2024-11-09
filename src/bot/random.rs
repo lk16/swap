@@ -9,7 +9,7 @@ pub struct RandomBot;
 
 impl Bot for RandomBot {
     // Returns the index of a random valid move
-    fn get_move(&self, position: &Position) -> usize {
+    fn get_move(&mut self, position: &Position) -> usize {
         let moves = position.get_moves();
 
         if moves == 0 {
@@ -40,7 +40,7 @@ mod tests {
     #[test]
     fn test_random_bot_valid_moves() {
         let position = Position::new(); // Initial position position has 4 valid moves
-        let bot = RandomBot;
+        let mut bot = RandomBot;
 
         // Call get_move 10 times and verify each move is valid
         for _ in 0..10 {
@@ -58,7 +58,7 @@ mod tests {
     #[should_panic]
     fn test_random_bot_no_moves() {
         let position = Position::new_from_bitboards(0, 0); // Empty position has no moves
-        let bot = RandomBot;
+        let mut bot = RandomBot;
 
         bot.get_move(&position); // Should panic when there are no valid moves
     }

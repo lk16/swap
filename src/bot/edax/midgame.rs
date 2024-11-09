@@ -1,3 +1,6 @@
+use std::time::{Duration, Instant};
+
+use crate::bot::{print_move_stats, print_search_header, print_total_stats};
 use crate::othello::position::Position;
 
 use super::bot::MIDGAME_DEPTH;
@@ -11,6 +14,7 @@ pub struct MidgameSearch {
     position: Position,
     eval: Eval,
     n_empties: u32,
+    nodes: u64,
 }
 
 impl MidgameSearch {
@@ -21,6 +25,7 @@ impl MidgameSearch {
             position,
             eval: Eval::new(&position),
             n_empties: position.count_empty(),
+            nodes: 0,
         }
     }
 
@@ -43,30 +48,49 @@ impl MidgameSearch {
     }
 
     pub fn get_move(&mut self) -> usize {
-        let mut remaining_moves = self.position.get_moves();
-
-        let mut best_move = 99; // Invalid move
+        let children = self.position.children_with_index();
+        let mut best_move = children.first().unwrap().0;
         let mut alpha = SCORE_MIN;
 
-        while remaining_moves != 0 {
-            let move_ = remaining_moves.trailing_zeros() as usize;
+        let mut total_nodes = 0;
+        let mut total_duration = Duration::ZERO;
 
-            let flipped = self.do_move(move_);
+        print_search_header("EdaxBot", false, MIDGAME_DEPTH);
+        for (i, (move_, child)) in children.iter().enumerate() {
+            let start = Instant::now();
+
+            self.eval = Eval::new(child);
+            self.n_empties = child.count_empty();
+            self.position = *child;
+
             let score = -self.negamax(MIDGAME_DEPTH - 1, -SCORE_MAX, -alpha);
-            self.undo_move(move_, flipped);
+            let duration = start.elapsed();
+
+            print_move_stats(
+                self.nodes,
+                i,
+                children.len(),
+                score as isize,
+                alpha as isize,
+                duration,
+            );
+            total_nodes += self.nodes;
+            total_duration += duration;
+            self.nodes = 0;
 
             if score > alpha {
                 alpha = score;
-                best_move = move_;
+                best_move = *move_;
             }
-
-            remaining_moves &= remaining_moves - 1;
         }
+
+        print_total_stats(total_nodes, total_duration);
 
         best_move
     }
 
     fn negamax(&mut self, depth: u32, mut alpha: i32, beta: i32) -> i32 {
+        self.nodes += 1;
         if depth == 0 {
             return self.heuristic();
         }

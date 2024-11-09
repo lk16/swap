@@ -38,9 +38,9 @@ impl Game {
     }
 
     #[allow(clippy::borrowed_box)]
-    pub fn get_current_bot(&self) -> Option<&Box<dyn Bot>> {
+    pub fn get_current_bot(&mut self) -> Option<&mut Box<dyn Bot>> {
         let turn = self.current_board().turn;
-        self.bots[turn].as_ref()
+        self.bots[turn].as_mut()
     }
 
     fn has_human_turn(&self, board: &Board) -> bool {

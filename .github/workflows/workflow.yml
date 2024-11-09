@@ -25,4 +25,6 @@ jobs:
           7z x eval.7z > /dev/null
           mv data/eval.dat .
       - name: Test
-        run: cargo test --manifest-path Cargo.toml
+        run: cargo test
+      - name: Test ffo problems
+        run: RUN_FFO_TESTS=1 cargo test bot::squared::endgame --release -- --nocapture
