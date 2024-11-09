@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn test_current_board() {
         let mut game = Game::new();
-        let initial_board = game.current_board().clone();
+        let initial_board = *game.current_board();
 
         game.do_move(19);
         assert_ne!(game.current_board(), &initial_board);

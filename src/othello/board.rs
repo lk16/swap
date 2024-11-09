@@ -312,7 +312,7 @@ mod tests {
     fn test_pass() {
         let board = Board::new();
 
-        let mut passed = board.clone();
+        let mut passed = board;
         passed.pass();
 
         assert_eq!(passed.black_discs(), board.black_discs());
@@ -324,7 +324,7 @@ mod tests {
     fn test_pass_twice() {
         let board = Board::new();
 
-        let mut passed = board.clone();
+        let mut passed = board;
         passed.pass();
         passed.pass();
 

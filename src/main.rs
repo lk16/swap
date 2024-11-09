@@ -1,6 +1,7 @@
 use frontend::app::run_app;
 
 pub mod bot;
+pub mod collections;
 pub mod frontend;
 pub mod othello;
 

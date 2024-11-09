@@ -62,3 +62,5 @@ pub const E8: usize = 60;
 pub const F8: usize = 61;
 pub const G8: usize = 62;
 pub const H8: usize = 63;
+pub const PASS: usize = 64;
+pub const NO_MOVE: usize = 65;

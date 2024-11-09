@@ -1,5 +1,3 @@
-use crate::othello::position::Position;
-
 const OUTFLANK_2: [u8; 64] = [
     0x00, 0x01, 0x00, 0x00, 0x10, 0x11, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x20, 0x21, 0x00, 0x00,
     0x00, 0x01, 0x00, 0x00, 0x10, 0x11, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x40, 0x41, 0x00, 0x00,
@@ -1749,60 +1747,51 @@ static FLIP: [FlipFn; 64] = [
     flip_e8, flip_f8, flip_g8, flip_h8,
 ];
 
-pub fn do_move_edax_bitscan(position: &mut Position, index: usize) -> u64 {
-    let flips = FLIP[index](position.player, position.opponent);
-
-    position.player |= flips | (1u64 << index);
-    position.opponent ^= flips;
-
-    std::mem::swap(&mut position.player, &mut position.opponent);
-
-    flips
+pub fn get_flipped_edax_bitscan(player: u64, opponent: u64, index: usize) -> u64 {
+    FLIP[index](player, opponent)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::othello::{do_move::simple::do_move_simple, get_moves::tests::move_test_cases};
+    use crate::othello::{
+        get_flipped::simple::get_flipped_simple, get_moves::tests::move_test_cases,
+        position::print_bitset,
+    };
 
     #[test]
-    fn test_do_move_edax_bitscan() {
+    fn test_get_flipped_edax_bitscan() {
         let test_cases = move_test_cases();
 
         for position in &test_cases {
-            let mut remaining_moves = position.get_moves();
-
-            while remaining_moves != 0 {
-                let move_ = remaining_moves.trailing_zeros() as usize;
-                remaining_moves &= remaining_moves - 1;
-
+            for move_ in position.iter_move_indices() {
                 if move_ == 27 || move_ == 28 || move_ == 35 || move_ == 36 {
                     continue;
                 }
 
-                let mut simple_after = *position;
-                let simple_flipped = do_move_simple(&mut simple_after, move_);
+                let player = position.player;
+                let opponent = position.opponent;
 
-                let mut edax_bitscan_after = *position;
-                let edax_bitscan_flipped = do_move_edax_bitscan(&mut edax_bitscan_after, move_);
+                let simple = get_flipped_simple(player, opponent, move_);
+                let edax_bitscan = get_flipped_edax_bitscan(player, opponent, move_);
 
-                if simple_after != edax_bitscan_after || simple_flipped != edax_bitscan_flipped {
+                if simple != edax_bitscan {
                     println!("move = {}", move_);
 
                     println!("position:");
                     println!(
                         "Position::new_from_bitboards(0x{:x}, 0x{:x})",
-                        position.player, position.opponent
+                        player, opponent
                     );
                     println!("{}", position);
 
                     println!("simple:");
-                    println!("{}", simple_after);
+                    print_bitset(simple);
 
                     println!("edax_bitscan:");
-                    println!("{}", edax_bitscan_after);
+                    print_bitset(edax_bitscan);
 
-                    assert!(false);
+                    panic!();
                 }
             }
         }

@@ -1,6 +1,4 @@
-use crate::othello::position::Position;
-
-pub fn do_move_simple(position: &mut Position, index: usize) -> u64 {
+pub fn get_flipped_simple(player: u64, opponent: u64, index: usize) -> u64 {
     let move_x = index % 8;
     let move_y = index / 8;
 
@@ -15,11 +13,10 @@ pub fn do_move_simple(position: &mut Position, index: usize) -> u64 {
         (1, 1),
     ];
 
-    let mut total_flips = 0u64;
-    let move_mask = 1u64 << index;
+    let mut flipped = 0u64;
 
     for (dx, dy) in DIRECTIONS {
-        let mut direction_flips = 0u64;
+        let mut direction_flipped = 0u64;
 
         for distance in 1..=7 {
             let square_x = move_x as i32 + distance * dx;
@@ -32,14 +29,14 @@ pub fn do_move_simple(position: &mut Position, index: usize) -> u64 {
             let square_mask = 1u64 << (square_y * 8 + square_x);
 
             // Square has opponent's piece
-            if square_mask & position.opponent != 0 {
-                direction_flips |= square_mask;
+            if square_mask & opponent != 0 {
+                direction_flipped |= square_mask;
                 continue;
             }
 
             // Square has player's piece
-            if square_mask & position.player != 0 {
-                total_flips |= direction_flips;
+            if square_mask & player != 0 {
+                flipped |= direction_flipped;
                 break;
             }
 
@@ -48,12 +45,5 @@ pub fn do_move_simple(position: &mut Position, index: usize) -> u64 {
         }
     }
 
-    // Actually perform the move
-    position.player ^= total_flips | move_mask;
-    position.opponent ^= total_flips;
-
-    // swap the player and opponent
-    std::mem::swap(&mut position.player, &mut position.opponent);
-
-    total_flips
+    flipped
 }

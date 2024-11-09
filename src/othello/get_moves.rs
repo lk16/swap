@@ -82,7 +82,7 @@ pub mod tests {
                     let move_x = x + (distance + 1) * dx;
                     let move_y = y + (distance + 1) * dy;
 
-                    if move_x < 0 || move_x >= 8 || move_y < 0 || move_y >= 8 {
+                    if !(0..8).contains(&move_x) || !(0..8).contains(&move_y) {
                         continue;
                     }
 

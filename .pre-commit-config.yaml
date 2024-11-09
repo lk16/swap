@@ -15,15 +15,15 @@ repos:
       - id: cargo-check
         name: cargo check
         language: system
-        entry: cargo check --manifest-path Cargo.toml
+        entry: cargo check
         pass_filenames: false
       - id: cargo-fmt
         name: cargo fmt
         language: system
-        entry: cargo check --manifest-path Cargo.toml
+        entry: cargo check
         pass_filenames: false
       - id: cargo-clippy
         name: cargo clippy
         language: system
-        entry: cargo clippy --manifest-path Cargo.toml -- -Dwarnings
+        entry: cargo clippy --all-targets -- -Dwarnings
         pass_filenames: false
