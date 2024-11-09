@@ -279,6 +279,38 @@ impl Position {
         let color = 2 - 2 * ((self.player >> index) & 1) - ((self.opponent >> index) & 1);
         color as usize
     }
+
+    pub fn iter_move_indices(&self) -> MoveIndices {
+        MoveIndices::new(self.get_moves())
+    }
+}
+
+pub struct MoveIndices {
+    remaining_moves: u64,
+}
+
+impl MoveIndices {
+    pub fn new(remaining_moves: u64) -> Self {
+        Self { remaining_moves }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.remaining_moves == 0
+    }
+}
+
+impl Iterator for MoveIndices {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining_moves == 0 {
+            return None;
+        }
+
+        let index = self.remaining_moves.trailing_zeros() as usize;
+        self.remaining_moves &= self.remaining_moves - 1;
+        Some(index)
+    }
 }
 
 #[cfg(test)]
@@ -634,5 +666,27 @@ mod tests {
             // Check that player and opponent don't overlap
             assert_eq!(position.player & position.opponent, 0);
         }
+    }
+
+    #[test]
+    fn test_iter_move_indices() {
+        // Test starting position
+        let position = Position::new();
+        let moves: Vec<usize> = position.iter_move_indices().collect();
+
+        // Starting position should have 4 valid moves: D3, C4, F5, E6
+        assert_eq!(moves.len(), 4);
+        assert!(moves.contains(&19)); // D3
+        assert!(moves.contains(&26)); // E3
+        assert!(moves.contains(&37)); // F4
+        assert!(moves.contains(&44)); // E5
+
+        // Test position with no moves
+        let no_moves_position = Position {
+            player: 0xFFFFFFFFFFFFFFFF,
+            opponent: 0,
+        };
+        let moves: Vec<usize> = no_moves_position.iter_move_indices().collect();
+        assert!(moves.is_empty());
     }
 }

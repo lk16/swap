@@ -1770,12 +1770,7 @@ mod tests {
         let test_cases = move_test_cases();
 
         for position in &test_cases {
-            let mut remaining_moves = position.get_moves();
-
-            while remaining_moves != 0 {
-                let move_ = remaining_moves.trailing_zeros() as usize;
-                remaining_moves &= remaining_moves - 1;
-
+            for move_ in position.iter_move_indices() {
                 if move_ == 27 || move_ == 28 || move_ == 35 || move_ == 36 {
                     continue;
                 }

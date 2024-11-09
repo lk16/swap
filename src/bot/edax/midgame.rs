@@ -96,10 +96,10 @@ impl MidgameSearch {
             return self.heuristic();
         }
 
-        let mut remaining_moves = self.position.get_moves();
+        let moves = self.position.iter_move_indices();
 
         // If no moves available
-        if remaining_moves == 0 {
+        if moves.is_empty() {
             // Check if the game is finished
             self.pass();
 
@@ -116,9 +116,7 @@ impl MidgameSearch {
             return score;
         }
 
-        while remaining_moves != 0 {
-            let move_ = remaining_moves.trailing_zeros() as usize;
-
+        for move_ in moves {
             let flipped = self.do_move(move_);
             let score = -self.negamax(depth - 1, -beta, -alpha);
             self.undo_move(move_, flipped);
@@ -128,8 +126,6 @@ impl MidgameSearch {
             if alpha >= beta {
                 break; // Beta cutoff
             }
-
-            remaining_moves &= remaining_moves - 1;
         }
 
         alpha
@@ -249,10 +245,10 @@ mod tests {
                 return self.heuristic();
             }
 
-            let mut remaining_moves = self.position.get_moves();
+            let moves = self.position.iter_move_indices();
 
             // If no moves available
-            if remaining_moves == 0 {
+            if moves.is_empty() {
                 // Check if the game is finished
                 self.pass();
 
@@ -269,9 +265,7 @@ mod tests {
                 return score;
             }
 
-            while remaining_moves != 0 {
-                let move_ = remaining_moves.trailing_zeros() as usize;
-
+            for move_ in moves {
                 let flipped = self.do_move(move_);
                 let score = -self.negamax(depth - 1, -beta, -alpha);
                 self.undo_move(move_, flipped);
@@ -281,8 +275,6 @@ mod tests {
                 if alpha >= beta {
                     break; // Beta cutoff
                 }
-
-                remaining_moves &= remaining_moves - 1;
             }
 
             alpha
