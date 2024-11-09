@@ -99,6 +99,37 @@ impl Position {
         Self { player, opponent }
     }
 
+    pub fn new_random_with_discs(n_discs: usize) -> Self {
+        assert!(
+            (4..=64).contains(&n_discs),
+            "Number of discs must be between 4 and 64"
+        );
+
+        let mut rng = ThreadRng::default();
+        let mut position = Self::new();
+
+        while position.count_discs() < n_discs as u32 {
+            let moves = position.get_moves();
+            if moves == 0 {
+                position.pass();
+                if position.get_moves() == 0 {
+                    // No moves available for either player, start over
+                    position = Self::new();
+                }
+                continue;
+            }
+
+            // Convert moves bitset to vector of indices
+            let valid_moves: Vec<usize> = (0..64).filter(|&i| moves & (1u64 << i) != 0).collect();
+
+            // Select random move
+            let random_move = valid_moves[rng.next_u64() as usize % valid_moves.len()];
+            position.do_move(random_move);
+        }
+
+        position
+    }
+
     pub fn shift(bitboard: u64, dir: i32) -> u64 {
         match dir {
             -9 => (bitboard & 0xfefefefefefefefe) << 7,
@@ -559,5 +590,49 @@ mod tests {
         let expected = position.get_moves();
 
         assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn test_new_random_with_discs() {
+        // Test minimum discs (4)
+        let position = Position::new_random_with_discs(4);
+        assert_eq!(position.count_discs(), 4);
+
+        // Test some middle value
+        let position = Position::new_random_with_discs(20);
+        assert_eq!(position.count_discs(), 20);
+
+        // Test maximum discs (64)
+        let position = Position::new_random_with_discs(64);
+        assert_eq!(position.count_discs(), 64);
+    }
+
+    #[test]
+    #[should_panic(expected = "Number of discs must be between 4 and 64")]
+    fn test_new_random_with_discs_too_few() {
+        Position::new_random_with_discs(3);
+    }
+
+    #[test]
+    #[should_panic(expected = "Number of discs must be between 4 and 64")]
+    fn test_new_random_with_discs_too_many() {
+        Position::new_random_with_discs(65);
+    }
+
+    #[test]
+    fn test_new_random_with_discs_valid_positions() {
+        for _ in 0..10 {
+            // Test multiple random positions
+            let position = Position::new_random_with_discs(20);
+
+            // Check that all discs are properly placed (no overlaps)
+            assert_eq!(
+                (position.player | position.opponent).count_ones(),
+                position.count_discs()
+            );
+
+            // Check that player and opponent don't overlap
+            assert_eq!(position.player & position.opponent, 0);
+        }
     }
 }
