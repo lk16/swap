@@ -18,9 +18,9 @@ pub struct MidgameSearch {
 }
 
 impl MidgameSearch {
-    // TODO bring better midgame search from Edax
-
     pub fn new(position: Position) -> Self {
+        // TODO This should match search_setup() in Edax
+
         Self {
             position,
             eval: Eval::new(&position),
