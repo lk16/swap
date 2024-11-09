@@ -18,7 +18,7 @@ pub struct MidgameSearch {
 }
 
 impl MidgameSearch {
-    // TODO #6 bring better midgame search from Edax
+    // TODO bring better midgame search from Edax
 
     pub fn new(position: Position) -> Self {
         Self {
