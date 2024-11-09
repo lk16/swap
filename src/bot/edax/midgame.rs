@@ -166,6 +166,7 @@ impl MidgameSearch {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
@@ -212,5 +213,146 @@ mod tests {
 
         assert!(score > SCORE_MIN);
         assert!(score < SCORE_MAX);
+    }
+
+    struct NaiveMidgameSearch {
+        position: Position,
+        eval: Eval,
+    }
+
+    impl NaiveMidgameSearch {
+        fn new(position: Position) -> Self {
+            Self {
+                position,
+                eval: Eval::new(&position),
+            }
+        }
+
+        fn do_move(&mut self, move_: usize) -> u64 {
+            let flipped = self.position.do_move(move_);
+            self.eval.update(move_, flipped);
+            flipped
+        }
+
+        fn undo_move(&mut self, move_: usize, flipped: u64) {
+            self.position.undo_move(move_, flipped);
+            self.eval.restore(move_, flipped);
+        }
+
+        fn pass(&mut self) {
+            self.position.pass();
+            self.eval.pass();
+        }
+
+        fn negamax(&mut self, depth: u32, mut alpha: i32, beta: i32) -> i32 {
+            if depth == 0 {
+                return self.heuristic();
+            }
+
+            let mut remaining_moves = self.position.get_moves();
+
+            // If no moves available
+            if remaining_moves == 0 {
+                // Check if the game is finished
+                self.pass();
+
+                if self.position.get_moves() == 0 {
+                    // Game is over, return final evaluation
+                    let score = self.position.final_score() as i32;
+                    self.pass();
+                    return score;
+                }
+
+                // Recursively evaluate after passing
+                let score = -self.negamax(depth - 1, -beta, -alpha);
+                self.pass();
+                return score;
+            }
+
+            while remaining_moves != 0 {
+                let move_ = remaining_moves.trailing_zeros() as usize;
+
+                let flipped = self.do_move(move_);
+                let score = -self.negamax(depth - 1, -beta, -alpha);
+                self.undo_move(move_, flipped);
+
+                alpha = alpha.max(score);
+
+                if alpha >= beta {
+                    break; // Beta cutoff
+                }
+
+                remaining_moves &= remaining_moves - 1;
+            }
+
+            alpha
+        }
+
+        fn heuristic(&self) -> i32 {
+            let player_index = self.eval.player as usize;
+            let empty_index = (60 - self.position.count_empty()) as usize;
+
+            let w = &EVAL_WEIGHT[player_index][empty_index];
+            let f = &self.eval.features;
+
+            let mut score = 0;
+            for i in 0..EVAL_N_FEATURES {
+                score += w[f[i] as usize] as i32;
+            }
+
+            if score > 0 {
+                score += 64;
+            } else {
+                score -= 64;
+            }
+            score /= 128;
+
+            if score <= SCORE_MIN {
+                score = SCORE_MIN + 1;
+            } else if score >= SCORE_MAX {
+                score = SCORE_MAX - 1;
+            }
+
+            score
+        }
+    }
+
+    #[test]
+    fn test_midgame_search() {
+        if std::env::var("RUN_EDAX_MIDGAME_TESTS").is_err() {
+            println!(
+                "Skipping Edax midgame tests. Set RUN_EDAX_MIDGAME_TESTS environment variable to run them."
+            );
+            return;
+        }
+
+        for disc_count in 4..=64 {
+            for _ in 0..10 {
+                let position = Position::new_random_with_discs(disc_count);
+
+                let mut naive_search = NaiveMidgameSearch::new(position);
+                let mut search = MidgameSearch::new(position);
+
+                for depth in 1..=5 {
+                    let naive_score = -naive_search.negamax(depth, SCORE_MIN, SCORE_MAX);
+                    let score = -search.negamax(depth, SCORE_MIN, SCORE_MAX);
+
+                    if naive_score != score {
+                        println!("position:");
+                        println!(
+                            "Position::new_from_bitboards(0x{:x}, 0x{:x})",
+                            position.player, position.opponent
+                        );
+                        println!("{}", position);
+
+                        println!("depth = {}", depth);
+                        println!("naive_score = {}", naive_score);
+                        println!("score = {}", score);
+
+                        assert!(false);
+                    }
+                }
+            }
+        }
     }
 }
