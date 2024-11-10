@@ -340,12 +340,12 @@ impl Eval {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use crate::othello::position::Position;
 
     use super::*;
 
-    fn test_positions() -> Vec<Position> {
+    pub fn test_positions() -> Vec<Position> {
         let mut positions = Vec::new();
 
         for disc_count in 4..=64 {
