@@ -3,6 +3,11 @@
 use crate::othello::{position::Position, squares::*};
 use lazy_static::lazy_static;
 
+use super::{
+    midgame::{SCORE_MAX, SCORE_MIN},
+    weights::EVAL_WEIGHT,
+};
+
 /// The number of features in the evaluation
 pub const EVAL_N_FEATURES: usize = 47;
 
@@ -144,13 +149,31 @@ pub const EVAL_MAX_VALUE: [i32; EVAL_N_FEATURES] = [
     225989, 226232, 226232, 226232, 226232, 226313, 226313, 226313, 226313, 226314,
 ];
 
+const DO_MOVE_FUNCTIONS: [fn(&mut Eval, usize, u64); 2] =
+    [Eval::do_move_player, Eval::do_move_opponent];
+
+const UNDO_MOVE_FUNCTIONS: [fn(&mut Eval, usize, u64); 2] =
+    [Eval::undo_move_player, Eval::undo_move_opponent];
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct Eval {
-    /// The features of the position
-    pub features: [i32; EVAL_N_FEATURES],
+    /// The position being evaluated
+    position: Position,
 
-    /// The player to evaluate from
-    pub player: i32,
+    /// The features of the position
+    features: [i32; EVAL_N_FEATURES],
+
+    /// The player to evaluate from, 0 is player, 1 is opponent
+    player: i32,
+
+    /// The number of empty squares on the board
+    n_empties: u32,
+}
+
+impl Default for Eval {
+    fn default() -> Self {
+        Self::new(&Position::new())
+    }
 }
 
 impl Eval {
@@ -158,6 +181,8 @@ impl Eval {
         let mut eval = Self {
             features: [0; EVAL_N_FEATURES],
             player: 0,
+            n_empties: position.count_empty(),
+            position: *position,
         };
 
         for i in 0..EVAL_N_FEATURES {
@@ -180,9 +205,6 @@ impl Eval {
         self.player = 1 - self.player;
     }
 
-    // TODO add Position to Eval
-    // TODO rename adjust_features to update_features after we put Position inside Eval
-
     /// Adjusts feature values when placing/removing or flipping discs
     ///
     /// # Arguments
@@ -196,7 +218,7 @@ impl Eval {
     ///   * When flipping to opponent: +1 (player 0→1)
     ///   * When restoring player: +1 (player 0→1)
     ///   * When restoring opponent: -1 (opponent 1→0)
-    fn adjust_features<const M: i32, const F: i32>(&mut self, move_pos: usize, flipped: u64) {
+    fn update_features<const M: i32, const F: i32>(&mut self, move_pos: usize, flipped: u64) {
         let s = &EVAL_X2F[move_pos];
 
         for feature in s {
@@ -216,68 +238,107 @@ impl Eval {
         }
     }
 
-    fn update0(&mut self, move_pos: usize, flipped: u64) {
+    fn do_move_player(&mut self, move_pos: usize, flipped: u64) {
         // Place player's disc on an empty square
         // In base-3: empty (2) -> player (0) requires -2
 
         // Flip opponent's discs to player's color
         // In base-3: opponent (1) -> player (0) requires -1
 
-        self.adjust_features::<-2, -1>(move_pos, flipped);
+        self.update_features::<-2, -1>(move_pos, flipped);
     }
 
-    fn update1(&mut self, move_pos: usize, flipped: u64) {
+    fn do_move_opponent(&mut self, move_pos: usize, flipped: u64) {
         // Place opponent's disc on an empty square
         // In base-3: empty (2) -> opponent (1) requires -1
 
         // Flip player's discs to opponent's color
         // In base-3: player (0) -> opponent (1) requires +1
 
-        self.adjust_features::<-1, 1>(move_pos, flipped);
+        self.update_features::<-1, 1>(move_pos, flipped);
     }
 
-    pub fn update(&mut self, move_pos: usize, flipped: u64) {
-        const UPDATE_FUNCTIONS: [fn(&mut Eval, usize, u64); 2] = [Eval::update0, Eval::update1];
-        UPDATE_FUNCTIONS[self.player as usize](self, move_pos, flipped);
+    pub fn do_move(&mut self, move_pos: usize) -> u64 {
+        let flipped = self.position.do_move(move_pos);
+        DO_MOVE_FUNCTIONS[self.player as usize](self, move_pos, flipped);
+        self.n_empties -= 1;
         self.swap();
+
+        flipped
     }
 
-    fn restore0(&mut self, move_pos: usize, flipped: u64) {
+    fn undo_move_player(&mut self, move_pos: usize, flipped: u64) {
         // Restore empty square from player's disc
         // In base-3: player (0) -> empty (2) requires +2
 
         // Restore opponent's discs from player's color
         // In base-3: player (0) -> opponent (1) requires +1
 
-        self.adjust_features::<2, 1>(move_pos, flipped);
+        self.update_features::<2, 1>(move_pos, flipped);
     }
 
-    fn restore1(&mut self, move_pos: usize, flipped: u64) {
+    fn undo_move_opponent(&mut self, move_pos: usize, flipped: u64) {
         // Restore empty square from opponent's disc
         // In base-3: opponent (1) -> empty (2) requires +1
 
         // Restore player's discs from opponent's color
         // In base-3: opponent (1) -> player (0) requires -1
 
-        self.adjust_features::<1, -1>(move_pos, flipped);
+        self.update_features::<1, -1>(move_pos, flipped);
     }
 
-    pub fn restore(&mut self, move_pos: usize, flipped: u64) {
-        const RESTORE_FUNCTIONS: [fn(&mut Eval, usize, u64); 2] = [Eval::restore0, Eval::restore1];
+    pub fn undo_move(&mut self, move_pos: usize, flipped: u64) {
+        self.position.undo_move(move_pos, flipped);
+
         self.swap();
-        RESTORE_FUNCTIONS[self.player as usize](self, move_pos, flipped);
+        UNDO_MOVE_FUNCTIONS[self.player as usize](self, move_pos, flipped);
+        self.n_empties += 1;
     }
 
     pub fn pass(&mut self) {
+        self.position.pass();
         self.swap();
     }
 
-    pub fn eval_sigma(n_empty: i32, depth: i32, probcut_depth: i32) -> f64 {
+    pub fn sigma(n_empty: i32, depth: i32, probcut_depth: i32) -> f64 {
         let sigma = -0.10026799 * n_empty as f64
             + 0.31027733 * depth as f64
             + -0.57772603 * probcut_depth as f64;
 
         0.07585621 * sigma * sigma + 1.16492647 * sigma + 5.4171698
+    }
+
+    pub fn position(&self) -> &Position {
+        &self.position
+    }
+
+    pub fn heuristic(&self) -> i32 {
+        let player_index = self.player as usize;
+
+        // TODO consider storing (60 - self.n_empties) in Eval
+        let empty_index = (60 - self.n_empties) as usize;
+
+        let weights = &EVAL_WEIGHT[player_index][empty_index];
+
+        let mut score = 0;
+        for i in 0..EVAL_N_FEATURES {
+            score += weights[self.features[i] as usize] as i32;
+        }
+
+        if score > 0 {
+            score += 64;
+        } else {
+            score -= 64;
+        }
+        score /= 128;
+
+        if score <= SCORE_MIN {
+            score = SCORE_MIN + 1;
+        } else if score >= SCORE_MAX {
+            score = SCORE_MAX - 1;
+        }
+
+        score
     }
 }
 
@@ -299,56 +360,90 @@ mod tests {
         positions
     }
 
-    #[test]
-    fn test_update0_restore0() {
-        for position in test_positions() {
-            let initial_eval = Eval::new(&position);
+    impl Eval {
+        /// Create a new eval for the opponent's perspective
+        fn new_for_opponent(position: &Position) -> Self {
+            // Pass position
+            let mut passed = *position;
+            passed.pass();
 
-            for move_ in position.iter_move_indices() {
-                let mut child = position.clone();
-                let flipped = child.do_move(move_);
+            // Create eval for passed position
+            // This sets features from the player's perspective
+            let mut eval = Eval::new(&passed);
 
-                let mut eval = initial_eval.clone();
-                eval.update0(move_, flipped);
-                eval.restore0(move_, flipped);
+            // Pass again
+            eval.pass();
+            eval
+        }
 
-                if eval != initial_eval {
-                    println!("position:");
-                    println!("{}", position);
-                    println!("move_ = {}", move_);
+        /// Validates that the eval state matches a fresh evaluation
+        fn validate(&self) {
+            let position = self.position();
 
-                    println!("eval = {:?}", eval.features);
-                    println!("initial_eval = {:?}", initial_eval.features);
+            assert!(self.player == 0 || self.player == 1);
+            assert!(self.n_empties == position.count_empty());
 
-                    assert!(false);
+            let fresh_eval = if self.player == 0 {
+                Eval::new(position)
+            } else {
+                Eval::new_for_opponent(position)
+            };
+
+            if self.features != fresh_eval.features {
+                println!("\ndifferences:");
+                for i in 0..EVAL_N_FEATURES {
+                    if self.features[i] != fresh_eval.features[i] {
+                        println!(
+                            "feature {:2}: {:6} != {:6}, diff = {:6}",
+                            i,
+                            self.features[i],
+                            fresh_eval.features[i],
+                            self.features[i] - fresh_eval.features[i]
+                        );
+                    }
                 }
+
+                assert!(false);
             }
         }
     }
 
     #[test]
-    fn test_update1_restore1() {
+    fn test_do_undo_player() {
         for position in test_positions() {
-            let initial_eval = Eval::new(&position);
-
             for move_ in position.iter_move_indices() {
-                let mut child = position.clone();
-                let flipped = child.do_move(move_);
+                let mut eval = Eval::new(&position);
+                assert_eq!(eval.player, 0);
+                eval.validate();
 
-                let mut eval = initial_eval.clone();
-                eval.update1(move_, flipped);
-                eval.restore1(move_, flipped);
+                let flipped = eval.do_move(move_);
+                eval.validate();
 
-                if eval != initial_eval {
-                    println!("position:");
-                    println!("{}", position);
-                    println!("move_ = {}", move_);
+                eval.undo_move(move_, flipped);
+                assert_eq!(eval.position, position);
+                eval.validate();
+            }
+        }
+    }
 
-                    println!("eval = {:?}", eval.features);
-                    println!("initial_eval = {:?}", initial_eval.features);
+    #[test]
+    fn test_do_undo_opponent() {
+        for position in test_positions() {
+            for move_ in position.iter_move_indices() {
+                let mut eval = Eval::new(&position);
+                eval.pass();
+                assert_eq!(eval.player, 1);
+                eval.validate();
 
-                    assert!(false);
-                }
+                let flipped = eval.do_move(move_);
+                eval.validate();
+
+                eval.undo_move(move_, flipped);
+                eval.validate();
+
+                let mut passed_position = position.clone();
+                passed_position.pass();
+                assert_eq!(eval.position, passed_position);
             }
         }
     }
@@ -356,24 +451,15 @@ mod tests {
     #[test]
     fn test_pass() {
         for position in test_positions() {
-            let initial_eval = Eval::new(&position);
+            let mut eval = Eval::new(&position);
+            eval.validate();
 
-            for move_ in position.iter_move_indices() {
-                let mut eval = initial_eval.clone();
-                eval.pass();
-                eval.pass();
+            eval.pass();
+            eval.validate();
 
-                if eval != initial_eval {
-                    println!("position:");
-                    println!("{}", position);
-                    println!("move_ = {}", move_);
-
-                    println!("eval = {:?}", eval.features);
-                    println!("initial_eval = {:?}", initial_eval.features);
-
-                    assert!(false);
-                }
-            }
+            eval.pass();
+            assert_eq!(eval.position, position);
+            eval.validate();
         }
     }
 
@@ -381,53 +467,11 @@ mod tests {
     fn test_eval() {
         for position in test_positions() {
             for move_ in position.iter_move_indices() {
-                // Start with initial position (player's turn)
-
-                // Create child position by making move (now opponent's turn)
-                let mut child = position.clone();
-                let flipped = child.do_move(move_);
-
-                // Method 1: Update evaluation incrementally
-                // ----------------------------------------
-                // Start with initial position (player's turn)
                 let mut eval = Eval::new(&position);
-                // Make move and switch player (now opponent's turn)
-                eval.update(move_, flipped);
+                eval.validate();
 
-                // Method 2: Create evaluation from resulting position
-                // ------------------------------------------------
-                // Currently child is in opponent's turn after the move
-                // Pass to switch back to player's turn, so Eval::new() starts from
-                // the same player perspective as Method 1
-                child.pass();
-                let mut eval_child = Eval::new(&child);
-                // Pass again to match Method 1's final state (opponent's turn)
-                eval_child.pass();
-
-                // Compare the two evaluations - they should be identical since they
-                // represent the same position from the same player's perspective
-                if eval != eval_child {
-                    println!("position:");
-                    println!("{}", position);
-                    println!("child:");
-                    println!("{}", child);
-                    println!("\ndifferences:");
-                    for i in 0..EVAL_N_FEATURES {
-                        if eval.features[i] != eval_child.features[i] {
-                            println!(
-                                "feature {:2}: {:6} != {:6}, diff = {:6}",
-                                i,
-                                eval.features[i],
-                                eval_child.features[i],
-                                eval.features[i] - eval_child.features[i]
-                            );
-                        }
-                    }
-                    println!("\neval.player = {}", eval.player);
-                    println!("eval_child.player = {}", eval_child.player);
-
-                    assert!(false);
-                }
+                eval.do_move(move_);
+                eval.validate();
             }
         }
     }
