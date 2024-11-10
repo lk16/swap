@@ -166,8 +166,8 @@ pub struct Eval {
     /// The player to evaluate from, 0 is player, 1 is opponent
     player: i32,
 
-    /// The number of empty squares on the board
-    n_empties: u32,
+    /// Contains (60 - number of empty squares), used as index for EVAL_WEIGHT
+    empty_index: usize,
 }
 
 impl Default for Eval {
@@ -181,7 +181,7 @@ impl Eval {
         let mut eval = Self {
             features: [0; EVAL_N_FEATURES],
             player: 0,
-            n_empties: position.count_empty(),
+            empty_index: (60 - position.count_empty()) as usize,
             position: *position,
         };
 
@@ -261,7 +261,7 @@ impl Eval {
     pub fn do_move(&mut self, move_pos: usize) -> u64 {
         let flipped = self.position.do_move(move_pos);
         DO_MOVE_FUNCTIONS[self.player as usize](self, move_pos, flipped);
-        self.n_empties -= 1;
+        self.empty_index += 1;
         self.swap();
 
         flipped
@@ -292,7 +292,7 @@ impl Eval {
 
         self.swap();
         UNDO_MOVE_FUNCTIONS[self.player as usize](self, move_pos, flipped);
-        self.n_empties += 1;
+        self.empty_index -= 1;
     }
 
     pub fn pass(&mut self) {
@@ -314,10 +314,7 @@ impl Eval {
 
     pub fn heuristic(&self) -> i32 {
         let player_index = self.player as usize;
-
-        // TODO consider storing (60 - self.n_empties) in Eval
-        let empty_index = (60 - self.n_empties) as usize;
-
+        let empty_index = self.empty_index;
         let weights = &EVAL_WEIGHT[player_index][empty_index];
 
         let mut score = 0;
@@ -381,7 +378,7 @@ mod tests {
             let position = self.position();
 
             assert!(self.player == 0 || self.player == 1);
-            assert!(self.n_empties == position.count_empty());
+            assert!(self.empty_index == (60 - position.count_empty()) as usize);
 
             let fresh_eval = if self.player == 0 {
                 Eval::new(position)
