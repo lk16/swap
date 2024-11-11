@@ -12,6 +12,8 @@ pub const ENDGAME_DEPTH: u32 = 18;
 
 impl Bot for EdaxBot {
     fn get_move(&mut self, position: &Position) -> usize {
+        // TODO use search_run() from Edax
+
         let moves = position.get_moves();
 
         if moves == 0 {

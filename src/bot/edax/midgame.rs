@@ -45,7 +45,6 @@ impl MidgameSearch {
 
             self.eval = Eval::new(child);
 
-            // TODO replace by PVS_midgame() from Edax
             let score = -self.negamax(MIDGAME_DEPTH - 1, -SCORE_MAX, -alpha);
             let duration = start.elapsed();
 
