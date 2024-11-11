@@ -22,8 +22,6 @@ pub struct MidgameSearch {
 
 impl MidgameSearch {
     pub fn new(position: Position) -> Self {
-        // TODO This should match search_setup() in Edax
-
         Self {
             root: position,
             eval: Eval::default(),
