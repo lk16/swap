@@ -99,6 +99,13 @@ impl Position {
         Self { player, opponent }
     }
 
+    pub fn new_empty() -> Self {
+        Self {
+            player: 0,
+            opponent: 0,
+        }
+    }
+
     pub fn new_random_with_discs(n_discs: usize) -> Self {
         assert!(
             (4..=64).contains(&n_discs),
@@ -699,5 +706,12 @@ mod tests {
         };
         let moves: Vec<usize> = no_moves_position.iter_move_indices().collect();
         assert!(moves.is_empty());
+    }
+
+    #[test]
+    fn test_new_empty() {
+        let position = Position::new_empty();
+        assert_eq!(position.player, 0);
+        assert_eq!(position.opponent, 0);
     }
 }
