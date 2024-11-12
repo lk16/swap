@@ -28,6 +28,7 @@ struct Node<T> {
 /// - Push: O(1)
 /// - Remove: O(1)
 /// - Restore: O(1)
+/// - Get: O(1)
 /// - Iteration: O(n)
 ///
 /// # Implementation Details
@@ -41,11 +42,18 @@ struct Node<T> {
 /// When items are removed, they maintain their position in memory and their links,
 /// allowing them to be efficiently restored later in a last-in-first-out manner.
 ///
+/// # Methods
+/// - `push`: Adds an item to the end of the list and returns its index
+/// - `remove`: Removes an item at the given index
+/// - `restore`: Restores a previously removed item at the given index
+/// - `get`: Returns a reference to the item at the given index (panics if out of bounds)
+///
 /// # Example Use Case
 /// This is particularly useful in tree search algorithms where you need to:
 /// 1. Add moves to a path
 /// 2. Remove moves when backtracking
 /// 3. Restore moves when returning to a previously explored branch
+/// 4. Access moves by their indices
 pub struct PoolList<T: Default, const N: usize> {
     nodes: Vec<Node<T>>,
 
@@ -173,6 +181,10 @@ impl<T: Default, const N: usize> PoolList<T, N> {
                 _phantom: std::marker::PhantomData,
             }
         }
+    }
+
+    pub fn get(&self, index: usize) -> &T {
+        &self.nodes[index].data
     }
 }
 
@@ -361,5 +373,17 @@ mod tests {
 
         list.restore(2); // Add 222
         validate_list(&list, &[111, 222, 333, 444], 0);
+    }
+
+    #[test]
+    fn test_get() {
+        let mut list = PoolList::<i32, 4>::new();
+        let idx1 = list.push(111);
+        let idx2 = list.push(222);
+        let idx3 = list.push(333);
+
+        assert_eq!(*list.get(idx1), 111);
+        assert_eq!(*list.get(idx2), 222);
+        assert_eq!(*list.get(idx3), 333);
     }
 }
