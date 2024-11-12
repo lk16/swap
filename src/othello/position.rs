@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::Path;
 
 use super::board::BLACK;
-use super::do_move::do_move;
+use super::get_flipped::get_flipped;
 use super::get_moves;
 
 lazy_static! {
@@ -184,7 +184,18 @@ impl Position {
     }
 
     pub fn do_move(&mut self, index: usize) -> u64 {
-        do_move(self, index)
+        let flipped = self.get_flipped(index);
+
+        self.player |= flipped | (1u64 << index);
+        self.opponent ^= flipped;
+
+        std::mem::swap(&mut self.player, &mut self.opponent);
+
+        flipped
+    }
+
+    pub fn get_flipped(&self, index: usize) -> u64 {
+        get_flipped(self.player, self.opponent, index)
     }
 
     pub fn undo_move(&mut self, index: usize, flips: u64) {
