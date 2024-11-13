@@ -8,7 +8,7 @@ use crate::{
 
 use super::{
     eval::Eval,
-    r#const::BLACK,
+    r#const::{BLACK, LEVEL},
     square::{Square, PRESORTED_X},
 };
 
@@ -39,6 +39,16 @@ impl Default for SearchResult {
     }
 }
 
+// Like unnamed struct field `options` of Search in Edax
+#[derive(Default)]
+pub struct SerachOptions {
+    /// Depth of search
+    depth: i32,
+
+    /// Selectivity of search
+    selectivity: i32,
+}
+
 /// Like Search in Edax
 pub struct Search {
     /// Color of player to move
@@ -67,11 +77,14 @@ pub struct Search {
 
     /// Index of the empty square in `empties`
     pub x_to_empties: [usize; 64],
+
+    /// Search options
+    pub options: SerachOptions,
 }
 
 impl Default for Search {
     fn default() -> Self {
-        Self::new(&Position::default(), BLACK)
+        Self::new(&Position::default(), BLACK, 0)
     }
 }
 
@@ -81,7 +94,7 @@ impl Search {
     /// - sets `player` and `position` like search_set_board() in Edax
     /// - sets `movelist` like search_get_movelist() in Edax
     /// - calls `setup()` to initialize other fields
-    pub fn new(position: &Position, player: i32) -> Self {
+    pub fn new(position: &Position, player: i32, level: i32) -> Self {
         let mut search = Self {
             player,
             position: *position,
@@ -92,9 +105,11 @@ impl Search {
             parity: 0,
             eval: Eval::new(position),
             x_to_empties: [0; 64],
+            options: SerachOptions::default(),
         };
 
         search.setup();
+        search.set_level(level, search.n_empties);
 
         search
     }
@@ -142,8 +157,9 @@ impl Search {
     }
 
     /// Like search_set_level() in Edax
-    pub fn set_level(&mut self, _level: u32, _n_empties: i32) {
-        todo!() // TODO
+    fn set_level(&mut self, level: i32, n_empties: i32) {
+        self.options.depth = LEVEL[level as usize][n_empties as usize].depth;
+        self.options.selectivity = LEVEL[level as usize][n_empties as usize].selectivity;
     }
 
     /// Like search_run() in Edax
@@ -164,7 +180,7 @@ mod tests {
 
         // Test new() with a custom position
         let custom_pos = Position::new_from_bitboards(0, 0xFFFFFFFFFFFFFFFF);
-        let search_new = Search::new(&custom_pos, BLACK);
+        let search_new = Search::new(&custom_pos, BLACK, 0);
         verify_search_invariants(&search_new, &custom_pos, BLACK);
     }
 

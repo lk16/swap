@@ -10,6 +10,8 @@ pub struct EdaxBot;
 pub const MIDGAME_DEPTH: u32 = 10;
 pub const ENDGAME_DEPTH: u32 = 18;
 
+pub const EDAX_LEVEL: i32 = 6;
+
 impl Bot for EdaxBot {
     fn get_move(&mut self, position: &Position) -> usize {
         let moves = position.get_moves();
@@ -22,11 +24,7 @@ impl Bot for EdaxBot {
             return moves.trailing_zeros() as usize;
         }
 
-        // TODO confirm player == BLACK is correct
-        let mut search = Search::new(position, BLACK);
-
-        // TODO confirm level == 6 is correct
-        search.set_level(6, search.n_empties);
+        let mut search = Search::new(position, BLACK, EDAX_LEVEL);
 
         search.run();
 
