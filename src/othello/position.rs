@@ -64,7 +64,7 @@ pub enum GameState {
     Finished,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
 pub struct Position {
     pub player: u64,
     pub opponent: u64,
