@@ -10,8 +10,8 @@ pub const SCORE_MIN: i32 = -64;
 pub const SCORE_MAX: i32 = 64;
 
 pub struct MidgameSearch {
-    // Contains search root position, does not change during search
-    root: Position,
+    // Contains searched position, changes during search
+    position: Position,
 
     // Contains search state, changes during search
     eval: Eval,
@@ -23,14 +23,14 @@ pub struct MidgameSearch {
 impl MidgameSearch {
     pub fn new(position: Position) -> Self {
         Self {
-            root: position,
+            position,
             eval: Eval::default(),
             nodes: 0,
         }
     }
 
     pub fn get_move(&mut self) -> usize {
-        let children = self.root.children_with_index();
+        let children = self.position.children_with_index();
         let mut best_move = children.first().unwrap().0;
         let mut alpha = SCORE_MIN;
 
@@ -75,28 +75,33 @@ impl MidgameSearch {
             return self.eval.heuristic();
         }
 
-        let moves = self.eval.position().iter_move_indices();
+        let moves = self.position.iter_move_indices();
 
         // If no moves available
         if moves.is_empty() {
+            self.position.pass();
             self.eval.pass();
 
             // Check if the game is finished
-            if !self.eval.position().has_moves() {
+            if !self.position.has_moves() {
                 self.eval.pass();
+                self.position.pass();
                 // Game is over, return final evaluation
-                return self.eval.position().final_score() as i32;
+                return self.position.final_score() as i32;
             }
 
             // Recursively evaluate after passing
             let score = -self.negamax(depth - 1, -beta, -alpha);
+            self.position.pass();
             self.eval.pass();
             return score;
         }
 
         for move_ in moves {
-            let flipped = self.eval.do_move(move_);
+            let flipped = self.position.do_move(move_);
+            self.eval.do_move(move_, flipped);
             let score = -self.negamax(depth - 1, -beta, -alpha);
+            self.position.undo_move(move_, flipped);
             self.eval.undo_move(move_, flipped);
 
             alpha = alpha.max(score);

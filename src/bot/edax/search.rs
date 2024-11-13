@@ -90,7 +90,7 @@ impl Search {
             empties: PoolList::default(),
             movelist: Self::get_movelist(position),
             parity: 0,
-            eval: Eval::new(position), // TODO don't store position both in Eval and Search
+            eval: Eval::new(position),
             x_to_empties: [0; 64],
         };
 
@@ -186,9 +186,6 @@ mod tests {
             expected_parity ^= empty.x as u32;
         }
         assert_eq!(search.parity, expected_parity);
-
-        // Check eval has same position
-        assert_eq!(*search.eval.position(), search.position);
 
         // Check empties contains only empty squares
         let empty_squares = !(search.position.player | search.position.opponent);

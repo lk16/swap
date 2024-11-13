@@ -157,9 +157,6 @@ const UNDO_MOVE_FUNCTIONS: [fn(&mut Eval, usize, u64); 2] =
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Eval {
-    /// The position being evaluated
-    position: Position,
-
     /// The features of the position
     features: [i32; EVAL_N_FEATURES],
 
@@ -182,7 +179,6 @@ impl Eval {
             features: [0; EVAL_N_FEATURES],
             player: 0,
             empty_index: (60 - position.count_empty()) as usize,
-            position: *position,
         };
 
         for i in 0..EVAL_N_FEATURES {
@@ -258,13 +254,10 @@ impl Eval {
         self.update_features::<-1, 1>(move_pos, flipped);
     }
 
-    pub fn do_move(&mut self, move_pos: usize) -> u64 {
-        let flipped = self.position.do_move(move_pos);
-        DO_MOVE_FUNCTIONS[self.player as usize](self, move_pos, flipped);
+    pub fn do_move(&mut self, index: usize, flipped: u64) {
+        DO_MOVE_FUNCTIONS[self.player as usize](self, index, flipped);
         self.empty_index += 1;
         self.swap();
-
-        flipped
     }
 
     fn undo_move_player(&mut self, move_pos: usize, flipped: u64) {
@@ -287,16 +280,13 @@ impl Eval {
         self.update_features::<1, -1>(move_pos, flipped);
     }
 
-    pub fn undo_move(&mut self, move_pos: usize, flipped: u64) {
-        self.position.undo_move(move_pos, flipped);
-
+    pub fn undo_move(&mut self, index: usize, flipped: u64) {
         self.swap();
-        UNDO_MOVE_FUNCTIONS[self.player as usize](self, move_pos, flipped);
+        UNDO_MOVE_FUNCTIONS[self.player as usize](self, index, flipped);
         self.empty_index -= 1;
     }
 
     pub fn pass(&mut self) {
-        self.position.pass();
         self.swap();
     }
 
@@ -306,10 +296,6 @@ impl Eval {
             + -0.57772603 * probcut_depth as f64;
 
         0.07585621 * sigma * sigma + 1.16492647 * sigma + 5.4171698
-    }
-
-    pub fn position(&self) -> &Position {
-        &self.position
     }
 
     pub fn heuristic(&self) -> i32 {
@@ -374,9 +360,7 @@ pub mod tests {
         }
 
         /// Validates that the eval state matches a fresh evaluation
-        fn validate(&self) {
-            let position = self.position();
-
+        fn validate(&self, position: &Position) {
             assert!(self.player == 0 || self.player == 1);
             assert!(self.empty_index == (60 - position.count_empty()) as usize);
 
@@ -411,14 +395,15 @@ pub mod tests {
             for move_ in position.iter_move_indices() {
                 let mut eval = Eval::new(&position);
                 assert_eq!(eval.player, 0);
-                eval.validate();
+                eval.validate(&position);
 
-                let flipped = eval.do_move(move_);
-                eval.validate();
+                let mut child = position.clone();
+                let flipped = child.do_move(move_);
+                eval.do_move(move_, flipped);
+                eval.validate(&child);
 
                 eval.undo_move(move_, flipped);
-                assert_eq!(eval.position, position);
-                eval.validate();
+                eval.validate(&position);
             }
         }
     }
@@ -427,20 +412,21 @@ pub mod tests {
     fn test_do_undo_opponent() {
         for position in test_positions() {
             for move_ in position.iter_move_indices() {
+                let mut child = position.clone();
+
                 let mut eval = Eval::new(&position);
+                child.pass();
                 eval.pass();
                 assert_eq!(eval.player, 1);
-                eval.validate();
+                eval.validate(&child);
 
-                let flipped = eval.do_move(move_);
-                eval.validate();
+                let flipped = child.do_move(move_);
+                eval.do_move(move_, flipped);
+                eval.validate(&child);
 
                 eval.undo_move(move_, flipped);
-                eval.validate();
-
-                let mut passed_position = position.clone();
-                passed_position.pass();
-                assert_eq!(eval.position, passed_position);
+                child.undo_move(move_, flipped);
+                eval.validate(&child);
             }
         }
     }
@@ -449,14 +435,17 @@ pub mod tests {
     fn test_pass() {
         for position in test_positions() {
             let mut eval = Eval::new(&position);
-            eval.validate();
+            let mut child = position.clone();
+
+            eval.validate(&child);
 
             eval.pass();
-            eval.validate();
+            child.pass();
+            eval.validate(&child);
 
             eval.pass();
-            assert_eq!(eval.position, position);
-            eval.validate();
+            child.pass();
+            eval.validate(&child);
         }
     }
 
@@ -465,10 +454,12 @@ pub mod tests {
         for position in test_positions() {
             for move_ in position.iter_move_indices() {
                 let mut eval = Eval::new(&position);
-                eval.validate();
+                eval.validate(&position);
 
-                eval.do_move(move_);
-                eval.validate();
+                let mut child = position.clone();
+                let flipped = child.do_move(move_);
+                eval.do_move(move_, flipped);
+                eval.validate(&child);
             }
         }
     }
