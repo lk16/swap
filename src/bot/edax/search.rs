@@ -1,14 +1,19 @@
 #![allow(dead_code)] // TODO
 
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicU8, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::bot::edax::r#const::{SCORE_MAX, SCORE_MIN};
 use crate::{
     bot::edax::square::QUADRANT_ID,
-    collections::{forward_pool_list::ForwardPoolList, pool_list::PoolList},
+    collections::{forward_pool_list::ForwardPoolList, hashtable::HashTable, pool_list::PoolList},
     othello::{position::Position, squares::*},
 };
 
+use super::r#const::{NodeType, GAME_SIZE};
 use super::{
     eval::Eval,
-    r#const::{BLACK, LEVEL},
+    r#const::{Stop, BLACK, LEVEL},
     square::{Square, PRESORTED_X},
 };
 
@@ -29,13 +34,45 @@ pub struct Move {
 }
 
 /// Like Result in Edax
+#[derive(Clone)]
 pub struct SearchResult {
+    /// Index of the best move
     pub move_: usize,
+
+    /// Score of the best move
+    pub score: i32,
+
+    /// Number of moves left to search
+    pub n_moves_left: usize,
+
+    /// If true, the move is from the opening book
+    pub book_move: bool,
+
+    /// Total moves to search
+    pub n_moves: i32,
+
+    /// Score bounds for each move
+    pub bound: [Bound; 66],
+
+    /// Number of nodes searched
+    pub n_nodes: u64,
+
+    /// Time spent searching in milliseconds
+    pub time: i64,
 }
 
 impl Default for SearchResult {
     fn default() -> Self {
-        Self { move_: NO_MOVE }
+        Self {
+            move_: NO_MOVE,
+            score: 0,
+            n_moves_left: 0,
+            book_move: false,
+            n_moves: 0,
+            bound: [Bound::default(); 66],
+            n_nodes: 0,
+            time: 0,
+        }
     }
 }
 
@@ -47,6 +84,41 @@ pub struct SerachOptions {
 
     /// Selectivity of search
     selectivity: i32,
+
+    /// If true, preserves hashtable date when `Search::run()` is called
+    keep_date: bool,
+}
+
+/// Like unnamed struct field `time` of Search in Edax
+pub struct SearchTime {
+    /// Time spent thinking in milliseconds
+    spent: AtomicI64,
+}
+
+impl Default for SearchTime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SearchTime {
+    fn new() -> Self {
+        let now = -Search::clock();
+
+        Self {
+            // Use negative so we can add current time to it later to get the elapsed time
+            spent: AtomicI64::new(-now),
+        }
+    }
+}
+
+#[derive(Default, Copy, Clone)]
+pub struct Bound {
+    /// Lower bound
+    lower: i32,
+
+    /// Upper bound
+    upper: i32,
 }
 
 /// Like Search in Edax
@@ -80,6 +152,39 @@ pub struct Search {
 
     /// Search options
     pub options: SerachOptions,
+
+    /// Stop condition
+    pub stop: AtomicU8,
+
+    /// Number of nodes searched by this search instance
+    pub n_nodes: AtomicU64,
+
+    /// Number of nodes searched by parallel searches spawned by this search instance
+    pub child_nodes: AtomicU64,
+
+    /// Time elapsed since search started
+    pub time: SearchTime,
+
+    /// Main hash table
+    pub hash_table: HashTable,
+
+    /// Principal variation table
+    pub pv_table: HashTable,
+
+    /// Hash table for shallow search
+    pub shallow_table: HashTable,
+
+    /// Height of the search tree
+    pub height: i32,
+
+    /// Type of the node at `height`
+    pub node_type: [NodeType; GAME_SIZE],
+
+    /// Depth of PV extension
+    pub depth_pv_extension: i32,
+
+    /// Stability bound
+    pub stability_bound: Bound,
 }
 
 impl Default for Search {
@@ -106,6 +211,17 @@ impl Search {
             eval: Eval::new(position),
             x_to_empties: [0; 64],
             options: SerachOptions::default(),
+            stop: AtomicU8::new(Stop::StopEnd as u8),
+            n_nodes: AtomicU64::new(0),
+            child_nodes: AtomicU64::new(0),
+            time: SearchTime::default(),
+            hash_table: HashTable::new(1 << 21),
+            pv_table: HashTable::new(1 << 17),
+            shallow_table: HashTable::new(1 << 21),
+            height: 0,
+            depth_pv_extension: 0,
+            stability_bound: Bound::default(),
+            node_type: [NodeType::default(); GAME_SIZE],
         };
 
         search.setup();
@@ -162,8 +278,94 @@ impl Search {
         self.options.selectivity = LEVEL[level as usize][n_empties as usize].selectivity;
     }
 
+    /// Like search_clock() in Edax
+    fn clock() -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64
+    }
+
+    /// Like get_pv_extension() in Edax
+    fn get_pv_extension(&self, _depth: i32) -> i32 {
+        todo!() // TODO
+    }
+
+    /// Like search_bound() in Edax
+    fn bound(&self, _score: i32) -> i32 {
+        todo!() // TODO
+    }
+
+    /// Like search_eval_0() in Edax
+    fn eval_0(&self) -> i32 {
+        todo!() // TODO
+    }
+
+    /// Like search_count_nodes() in Edax
+    fn count_nodes(&self) -> u64 {
+        self.n_nodes.load(Ordering::Relaxed) + self.child_nodes.load(Ordering::Relaxed)
+    }
+
+    /// Like statistics_sum_nodes() in Edax
+    fn sum_nodes(&mut self) {
+        // TODO #8 Add stats when we do parallel searches
+    }
+
     /// Like search_run() in Edax
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> SearchResult {
+        self.stop.store(Stop::Running as u8, Ordering::Relaxed);
+        self.n_nodes = AtomicU64::new(0);
+        self.child_nodes = AtomicU64::new(0);
+        self.time = SearchTime::new();
+
+        if !self.options.keep_date {
+            self.hash_table.clear();
+            self.pv_table.clear();
+            self.shallow_table.clear();
+        }
+
+        self.height = 0;
+        self.node_type[self.height as usize] = NodeType::PvNode;
+        self.depth_pv_extension = self.get_pv_extension(0);
+        self.stability_bound.upper = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
+        self.stability_bound.lower = 2 * self.position.count_player_stable_discs() - SCORE_MAX;
+        self.result.score = self.bound(self.eval_0());
+        self.result.n_moves_left = self.movelist.len();
+        self.result.n_moves = self.movelist.len() as i32;
+        self.result.book_move = false;
+
+        if self.movelist.is_empty() {
+            self.result.bound[PASS] = Bound {
+                lower: SCORE_MIN,
+                upper: SCORE_MAX,
+            };
+        } else {
+            for move_ in self.movelist.iter() {
+                self.result.bound[move_.x as usize] = Bound {
+                    lower: SCORE_MIN,
+                    upper: SCORE_MAX,
+                };
+            }
+        }
+
+        self.iterative_deepening(SCORE_MIN, SCORE_MAX);
+
+        self.result.n_nodes = self.count_nodes();
+
+        if self.stop.load(Ordering::Relaxed) == Stop::Running as u8 {
+            self.stop.store(Stop::StopEnd as u8, Ordering::Relaxed);
+        }
+
+        self.time.spent.fetch_add(Self::clock(), Ordering::Relaxed);
+        self.result.time = self.time.spent.load(Ordering::Relaxed);
+
+        self.sum_nodes();
+
+        self.result.clone()
+    }
+
+    /// Like iterative_deepening() in Edax
+    fn iterative_deepening(&mut self, _alpha: i32, _eta: i32) {
         todo!() // TODO
     }
 }

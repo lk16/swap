@@ -4,7 +4,7 @@ use crate::othello::{position::Position, squares::*};
 use lazy_static::lazy_static;
 
 use super::{
-    midgame::{SCORE_MAX, SCORE_MIN},
+    r#const::{SCORE_MAX, SCORE_MIN},
     weights::EVAL_WEIGHT,
 };
 

@@ -237,3 +237,51 @@ lazy_static! {
         level_array
     };
 }
+
+/// Represents different states that can stop or interrupt a search
+///
+/// Like Stop in Edax
+#[repr(u8)]
+pub enum Stop {
+    /// Search is currently running normally
+    Running = 0,
+
+    /// Stop signal for parallel search operations
+    StopParallelSearch = 1,
+
+    /// Stop analyzing while waiting for opponent's move
+    StopPondering = 2,
+
+    /// Stop due to time limit being reached
+    StopTimeout = 3,
+
+    /// Stop requested by user or external command
+    StopOnDemand = 4,
+
+    /// Search has completed normally
+    StopEnd = 5,
+}
+
+impl Stop {
+    pub fn is_running(&self) -> bool {
+        matches!(self, Stop::Running)
+    }
+}
+
+/// Number of moves in game including passing moves.
+pub const GAME_SIZE: usize = 80;
+
+#[repr(u8)]
+#[derive(Default, Copy, Clone)]
+pub enum NodeType {
+    #[default]
+    PvNode = 0,
+    CutNode = 1,
+    AllNode = 2,
+}
+
+/// Minimum final score
+pub const SCORE_MIN: i32 = -64;
+
+/// Maximum final score
+pub const SCORE_MAX: i32 = 64;

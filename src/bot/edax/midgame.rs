@@ -5,9 +5,7 @@ use crate::othello::position::Position;
 
 use super::bot::MIDGAME_DEPTH;
 use super::eval::Eval;
-
-pub const SCORE_MIN: i32 = -64;
-pub const SCORE_MAX: i32 = 64;
+use super::r#const::{SCORE_MAX, SCORE_MIN};
 
 pub struct MidgameSearch {
     // Contains searched position, changes during search
