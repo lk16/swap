@@ -84,7 +84,7 @@ pub struct Search {
 
 impl Default for Search {
     fn default() -> Self {
-        Self::new(&Position::default(), BLACK, 0)
+        Self::new(&Position::new(), BLACK, 0)
     }
 }
 
@@ -176,7 +176,7 @@ mod tests {
     fn test_search_initialization() {
         // Test default()
         let search_default = Search::default();
-        verify_search_invariants(&search_default, &Position::default(), BLACK);
+        verify_search_invariants(&search_default, &Position::new(), BLACK);
 
         // Test new() with a custom position
         let custom_pos = Position::new_from_bitboards(0, 0xFFFFFFFFFFFFFFFF);

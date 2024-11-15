@@ -72,7 +72,7 @@ pub struct Position {
 
 impl Default for Position {
     fn default() -> Self {
-        Self::new()
+        Self::new_empty()
     }
 }
 
@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn test_default() {
-        assert_eq!(Position::default(), Position::new());
+        assert_eq!(Position::default(), Position::new_empty());
     }
 
     #[test]
