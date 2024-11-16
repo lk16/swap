@@ -287,18 +287,28 @@ impl Search {
     }
 
     /// Like get_pv_extension() in Edax
-    fn get_pv_extension(&self, _depth: i32) -> i32 {
-        todo!() // TODO
+    fn get_pv_extension(&self, depth: i32) -> i32 {
+        if depth >= self.n_empties || depth <= 9 {
+            -1
+        } else if depth <= 12 {
+            10
+        } else if depth <= 18 {
+            12
+        } else if depth <= 24 {
+            14
+        } else {
+            16
+        }
     }
 
     /// Like search_bound() in Edax
-    fn bound(&self, _score: i32) -> i32 {
-        todo!() // TODO
+    fn bound(&self, score: i32) -> i32 {
+        score.clamp(self.stability_bound.lower, self.stability_bound.upper)
     }
 
     /// Like search_eval_0() in Edax
     fn eval_0(&self) -> i32 {
-        todo!() // TODO
+        self.eval.heuristic()
     }
 
     /// Like search_count_nodes() in Edax
