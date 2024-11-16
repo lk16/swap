@@ -7,6 +7,7 @@ use std::io::Read;
 use std::path::Path;
 
 use super::board::BLACK;
+use super::count_stable::count_stable;
 use super::get_flipped::get_flipped;
 use super::get_moves;
 
@@ -300,6 +301,16 @@ impl Position {
 
     pub fn iter_move_indices(&self) -> MoveIndices {
         MoveIndices::new(self.get_moves())
+    }
+
+    /// Like get_stability() in Edax
+    pub fn count_player_stable_discs(&self) -> i32 {
+        count_stable(self.player, self.opponent)
+    }
+
+    /// Similar to get_stability() in Edax but for the opponent
+    pub fn count_opponent_stable_discs(&self) -> i32 {
+        count_stable(self.opponent, self.player)
     }
 }
 

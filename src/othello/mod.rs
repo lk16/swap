@@ -1,4 +1,5 @@
 pub mod board;
+pub mod count_stable;
 pub mod ffo_problems;
 pub mod game;
 pub mod get_flipped;
