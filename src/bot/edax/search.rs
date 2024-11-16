@@ -1,9 +1,12 @@
 #![allow(dead_code)] // TODO
 
+use rand::Rng;
 use std::sync::atomic::{AtomicI64, AtomicU64, AtomicU8, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::bot::edax::r#const::{SCORE_MAX, SCORE_MIN};
+use crate::bot::edax::r#const::{
+    ITERATIVE_MIN_EMPTIES, NO_SELECTIVITY, SCORE_INF, SCORE_MAX, SCORE_MIN,
+};
 use crate::{
     bot::edax::square::QUADRANT_ID,
     collections::{forward_pool_list::ForwardPoolList, hashtable::HashTable, pool_list::PoolList},
@@ -18,7 +21,7 @@ use super::{
 };
 
 /// Like Move in Edax
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct Move {
     /// Bitset representation of the flipped squares
     flipped: u64,
@@ -32,6 +35,26 @@ pub struct Move {
     /// Cost of the move
     cost: u32,
 }
+
+impl PartialOrd for Move {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.score.partial_cmp(&other.score)
+    }
+}
+
+impl PartialEq for Move {
+    fn eq(&self, other: &Self) -> bool {
+        self.score == other.score
+    }
+}
+
+/// Like MOVE_PASS in Edax
+pub const MOVE_PASS: Move = Move {
+    flipped: 0,
+    x: PASS as i32,
+    score: -SCORE_INF,
+    cost: 0,
+};
 
 /// Like Result in Edax
 #[derive(Clone)]
@@ -59,6 +82,15 @@ pub struct SearchResult {
 
     /// Time spent searching in milliseconds
     pub time: i64,
+
+    /// Depth of the search
+    pub depth: i32,
+
+    /// Selectivity of the search
+    pub selectivity: i32,
+
+    /// Principal variation of the search
+    pub pv: Line,
 }
 
 impl Default for SearchResult {
@@ -72,6 +104,9 @@ impl Default for SearchResult {
             bound: [Bound::default(); 66],
             n_nodes: 0,
             time: 0,
+            depth: 0,
+            selectivity: 0,
+            pv: Line::default(),
         }
     }
 }
@@ -119,6 +154,31 @@ pub struct Bound {
 
     /// Upper bound
     upper: i32,
+}
+
+/// Like Line in Edax
+#[derive(Clone)]
+pub struct Line {
+    /// Moves in the line
+    moves: Vec<u8>,
+
+    /// Color of first player to move in the line
+    color: i32,
+}
+
+impl Line {
+    fn new(color: i32) -> Self {
+        Self {
+            moves: Vec::new(),
+            color,
+        }
+    }
+}
+
+impl Default for Line {
+    fn default() -> Self {
+        Self::new(0)
+    }
 }
 
 /// Like Search in Edax
@@ -185,6 +245,12 @@ pub struct Search {
 
     /// Stability bound
     pub stability_bound: Bound,
+
+    /// Selectivity level of the search
+    pub selectivity: i32,
+
+    /// Depth of the search
+    pub depth: i32,
 }
 
 impl Default for Search {
@@ -222,6 +288,8 @@ impl Search {
             depth_pv_extension: 0,
             stability_bound: Bound::default(),
             node_type: [NodeType::default(); GAME_SIZE],
+            selectivity: 0,
+            depth: 0,
         };
 
         search.setup();
@@ -374,8 +442,240 @@ impl Search {
         self.result.clone()
     }
 
+    /// Computes final score knowing the number of empty squares.
+    ///
+    /// Like search_solve() in Edax
+    pub fn solve(&self) -> i32 {
+        self.position.final_score_with_empty(self.n_empties)
+    }
+
+    /// Like get_last_level() in Edax
+    fn get_last_level(&self, _depth: &i32, _selectivity: &i32) -> bool {
+        todo!() // TODO
+    }
+
+    /// Like search_adjust_time() in Edax
+    fn adjust_time(&self, _new_search: bool) {
+        todo!() // TODO
+    }
+
+    /// Like record_best_move() in Edax
+    fn record_best_move(
+        &mut self,
+        _position: &Position,
+        _move_: &Move,
+        _alpha: i32,
+        _beta: i32,
+        _depth: i32,
+    ) {
+        todo!() // TODO
+    }
+
+    /// Evaluates the movelist in `self.movelist`
+    ///
+    /// Like movelist_evaluate() in Edax, except we don't send movelist as a parameter due to borrowing issues
+    fn evaluate_own_movelist(&mut self, _alpha: i32, _beta: i32) {
+        // TODO use self.movelist
+
+        // TODO retrieve hash data from self.pv_table again
+        todo!() // TODO
+    }
+
+    /// Like search_continue() in Edax
+    fn continue_search(&self) -> bool {
+        todo!() // TODO
+    }
+
     /// Like iterative_deepening() in Edax
-    fn iterative_deepening(&mut self, _alpha: i32, _eta: i32) {
+    #[allow(unused_assignments)] // TODO
+    fn iterative_deepening(&mut self, alpha: i32, beta: i32) {
+        self.result.move_ = NO_MOVE;
+        self.result.score = -SCORE_INF;
+        self.result.depth = -1;
+        self.result.selectivity = 0;
+        self.result.time = 0;
+        self.result.n_nodes = 0;
+        self.result.pv = Line::new(self.player);
+
+        // Game is over
+        if self.movelist.is_empty() && !self.position.opponent_has_moves() {
+            self.result.move_ = NO_MOVE;
+            self.result.score = self.solve();
+            self.result.depth = self.n_empties;
+            self.result.selectivity = NO_SELECTIVITY;
+            self.result.time = self.time.spent.load(Ordering::Relaxed);
+            self.result.n_nodes = self.count_nodes();
+            self.result.bound[NO_MOVE] = Bound {
+                lower: self.result.score,
+                upper: self.result.score,
+            };
+            self.result.pv = Line::new(self.player);
+            return;
+        }
+
+        let mut score = self.bound(self.eval_0());
+        let mut end = self.options.depth;
+        if end >= self.n_empties {
+            end = self.n_empties - ITERATIVE_MIN_EMPTIES + 2;
+            if end <= 0 {
+                end = 2 - (self.n_empties & 1);
+            }
+        }
+        let mut start = 6 - (end & 1);
+        if start > end - 2 {
+            start = end - 2;
+        }
+        if start <= 0 {
+            start = 2 - (end & 1);
+        }
+
+        self.result.selectivity = if self.options.depth > 10 {
+            0
+        } else {
+            NO_SELECTIVITY
+        };
+
+        let mut old_depth = 0;
+        let mut old_selectivity = self.result.selectivity;
+
+        if let Some(hash_data) = self.pv_table.get(&self.position) {
+            old_depth = hash_data.depth as i32;
+            old_selectivity = hash_data.selectivity as i32;
+
+            if hash_data.lower == hash_data.upper {
+                if self.get_last_level(&old_depth, &old_selectivity) {
+                    start = old_depth;
+                    self.selectivity = old_selectivity;
+                }
+                score = hash_data.lower as i32;
+            } else {
+                self.adjust_time(true);
+            }
+        } else {
+            self.adjust_time(false);
+        }
+
+        if self.selectivity > self.options.selectivity {
+            self.selectivity = self.options.selectivity;
+        }
+
+        if start > self.options.depth {
+            start = self.options.depth;
+        }
+        if start > self.n_empties {
+            start = self.n_empties;
+        }
+        if start < self.n_empties {
+            if (start & 1) != (end & 1) {
+                start += 1;
+            }
+            if start <= 0 {
+                start = 2 - (end & 1);
+            }
+            if start > end {
+                start = end;
+            }
+        }
+
+        if self.movelist.is_empty() {
+            let mut bestmove = MOVE_PASS;
+            bestmove.score = score;
+
+            // Create local copy to avoid borrowing issues
+            let position = self.position;
+            self.record_best_move(&position, &bestmove, alpha, beta, old_depth);
+        } else {
+            if end == 0 {
+                // shuffle the movelist
+                for move_ in self.movelist.iter_mut() {
+                    move_.score = rand::thread_rng().gen::<i32>() & 0x7fffffff;
+                }
+            } else {
+                // sort the moves
+                self.evaluate_own_movelist(alpha, start);
+            }
+            self.movelist.sort();
+
+            // Create local copy to avoid borrowing issues
+            let mut bestmove = *self.movelist.first().unwrap();
+            bestmove.score = score;
+
+            let position = self.position;
+            self.record_best_move(&position, &bestmove, alpha, beta, old_depth);
+        }
+
+        self.selectivity = old_selectivity;
+
+        // Special case: level 0
+        if end == 0 {
+            return;
+        }
+
+        // midgame: iterative depth
+        let mut depth = start;
+        while depth < end {
+            self.depth_pv_extension = self.get_pv_extension(depth);
+            score = self.aspiration_search(alpha, beta, depth, score);
+
+            if !self.continue_search() {
+                return;
+            }
+
+            if score.abs() >= SCORE_MAX - 1
+                && depth > end - ITERATIVE_MIN_EMPTIES
+                && self.options.depth >= self.n_empties
+            {
+                break;
+            }
+
+            depth += 2;
+        }
+        self.depth = end;
+
+        // Switch to endgame
+        if self.options.depth >= self.n_empties {
+            self.depth = self.n_empties;
+        }
+
+        // iterative selectivity
+
+        // TODO pretend we have time, since we don't do time management
+        let has_time = true;
+
+        while self.selectivity <= self.options.selectivity {
+            // Check if we should jump to exact endgame for faster solving
+            if self.depth == self.n_empties
+                && ((self.depth < 21 && self.selectivity >= 1)
+                    || (self.depth < 24 && self.selectivity >= 2)
+                    || (self.depth < 27 && self.selectivity >= 3)
+                    || (self.depth < 30 && self.selectivity >= 4)
+                    || (has_time && self.depth < 30 && self.selectivity >= 2)
+                    || score.abs() >= SCORE_MAX)
+            {
+                self.selectivity = self.options.selectivity;
+            }
+
+            if self.selectivity == self.options.selectivity {
+                self.adjust_time(true);
+            }
+
+            score = self.aspiration_search(alpha, beta, self.depth, score);
+
+            if !self.continue_search() {
+                return;
+            }
+
+            self.selectivity += 1;
+        }
+
+        // Ensure selectivity doesn't exceed options.selectivity
+        if self.selectivity > self.options.selectivity {
+            self.selectivity = self.options.selectivity;
+        }
+    }
+
+    /// Like aspiration_search() in Edax
+    fn aspiration_search(&mut self, _alpha: i32, _beta: i32, _depth: i32, _score: i32) -> i32 {
         todo!() // TODO
     }
 }

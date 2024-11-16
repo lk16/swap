@@ -283,3 +283,37 @@ pub const SCORE_MIN: i32 = -64;
 
 /// Maximum final score
 pub const SCORE_MAX: i32 = 64;
+
+/// Infinity score
+pub const SCORE_INF: i32 = 127;
+
+/** Selectivity probcut */
+pub struct Selectivity {
+    /// Selectivity value
+    pub t: f64,
+
+    /// Level of selectivity
+    pub level: i32,
+
+    /// Selectivity value as a percentage
+    pub percent: i32,
+}
+
+#[rustfmt::skip]
+pub const SELECTIVITY_TABLE: [Selectivity; 6] = [
+    Selectivity { t: 1.1, level: 0, percent: 73 }, // strong selectivity
+    Selectivity { t: 1.5, level: 1, percent: 87 }, //       |
+    Selectivity { t: 2.0, level: 2, percent: 95 }, //       |
+    Selectivity { t: 2.6, level: 3, percent: 98 }, //       |
+    Selectivity { t: 3.3, level: 4, percent: 99 }, //       V
+    Selectivity { t: 999.0, level: 5, percent: 100 }, // no selectivity
+];
+
+/// Index in SELECTIVITY_TABLE for no selectivity
+pub const NO_SELECTIVITY: i32 = 5;
+
+/// Threshold for switching between midgame and endgame evaluation.
+/// When the number of empty squares is less than or equal to this value,
+/// the engine switches from using midgame evaluation (heuristic scoring)
+/// to endgame evaluation (exact scoring).
+pub const ITERATIVE_MIN_EMPTIES: i32 = 10;

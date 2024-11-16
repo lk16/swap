@@ -164,6 +164,10 @@ impl Position {
         self.get_moves() != 0
     }
 
+    pub fn opponent_has_moves(&self) -> bool {
+        self.get_opponent_moves() != 0
+    }
+
     pub fn is_valid_move(&self, index: usize) -> bool {
         if index >= 64 {
             return false;
@@ -291,6 +295,24 @@ impl Position {
 
         // Draw
         0
+    }
+
+    /// Computes final score knowing the number of empty squares.
+    ///
+    /// Like board_solve() in Edax
+    pub fn final_score_with_empty(&self, empty_count: i32) -> i32 {
+        let player_disc_count = self.player.count_ones() as i32;
+        let opponent_disc_count = 64 - empty_count - player_disc_count;
+        let mut score = player_disc_count - opponent_disc_count;
+
+        #[allow(clippy::comparison_chain)]
+        if score < 0 {
+            score -= empty_count;
+        } else if score > 0 {
+            score += empty_count;
+        }
+
+        score
     }
 
     /// Get the color of a square: 0 for player, 1 for opponent, 2 for empty

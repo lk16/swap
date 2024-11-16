@@ -18,13 +18,13 @@ const BUCKET_SIZE: usize = 4;
 /// Like HashData in Edax
 #[derive(Clone, Copy, Default)]
 pub struct HashData {
-    depth: u8,
-    selectivity: u8,
-    cost: u8,
-    date: u8,
-    lower: i8,
-    upper: i8,
-    move_: [u8; 2],
+    pub depth: u8,
+    pub selectivity: u8,
+    pub cost: u8,
+    pub date: u8,
+    pub lower: i8,
+    pub upper: i8,
+    pub move_: [u8; 2],
 }
 
 impl HashData {
