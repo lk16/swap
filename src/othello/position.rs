@@ -725,4 +725,49 @@ mod tests {
         assert_eq!(position.player, 0);
         assert_eq!(position.opponent, 0);
     }
+
+    #[test]
+    fn test_final_score_with_empty() {
+        // Test player winning with empty squares
+        let player_wins = Position {
+            player: 0x0000000000000007,   // 3 discs
+            opponent: 0x0000000000000001, // 1 disc
+        };
+        assert_eq!(player_wins.final_score_with_empty(60), 62); // 64 - (2 * 1)
+
+        // Test opponent winning with empty squares
+        let opponent_wins = Position {
+            player: 0x0000000000000001,   // 1 disc
+            opponent: 0x0000000000000007, // 3 discs
+        };
+        assert_eq!(opponent_wins.final_score_with_empty(60), -62); // -64 + (2 * 1)
+
+        // Test draw with empty squares
+        let draw = Position {
+            player: 0x0000000000000003,   // 2 discs
+            opponent: 0x0000000000000003, // 2 discs
+        };
+        assert_eq!(draw.final_score_with_empty(60), 0);
+
+        // Test with no empty squares
+        let full_player_wins = Position {
+            player: 0xFFFFFFFFFFFFFFFE,   // 63 discs
+            opponent: 0x0000000000000001, // 1 disc
+        };
+        assert_eq!(full_player_wins.final_score_with_empty(0), 62); // 64 - (2 * 1)
+    }
+
+    #[test]
+    fn test_opponent_has_moves() {
+        // Test initial position - opponent should have moves
+        let position = Position::new();
+        assert!(position.opponent_has_moves());
+
+        // Test position where opponent has no moves
+        let no_moves_position = Position {
+            player: 0x0000000000000000,
+            opponent: 0xFFFFFFFFFFFFFFFF,
+        };
+        assert!(!no_moves_position.opponent_has_moves());
+    }
 }
