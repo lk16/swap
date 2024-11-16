@@ -449,9 +449,11 @@ impl Search {
         self.position.final_score_with_empty(self.n_empties)
     }
 
+    /// Returns Some((depth, selectivity)) if found in hash tables, None otherwise
+    ///
     /// Like get_last_level() in Edax
-    fn get_last_level(&self, _depth: &i32, _selectivity: &i32) -> bool {
-        todo!() // TODO
+    fn get_last_level(&self) -> Option<(i32, i32)> {
+        todo!()
     }
 
     /// Like search_adjust_time() in Edax
@@ -543,9 +545,9 @@ impl Search {
             old_selectivity = hash_data.selectivity as i32;
 
             if hash_data.lower == hash_data.upper {
-                if self.get_last_level(&old_depth, &old_selectivity) {
-                    start = old_depth;
-                    self.selectivity = old_selectivity;
+                if let Some((depth, selectivity)) = self.get_last_level() {
+                    start = depth;
+                    self.selectivity = selectivity;
                 }
                 score = hash_data.lower as i32;
             } else {
