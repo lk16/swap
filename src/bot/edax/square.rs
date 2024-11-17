@@ -10,11 +10,11 @@ pub struct Square {
     pub x: i32,
 
     /// Parity quadrant of the square
-    pub quadrant: i32,
+    pub quadrant: u32,
 }
 
 #[rustfmt::skip]
-pub const QUADRANT_ID: [i32; 66] = [
+pub const QUADRANT_ID: [u32; 66] = [
     1, 1, 1, 1, 2, 2, 2, 2,
     1, 1, 1, 1, 2, 2, 2, 2,
     1, 1, 1, 1, 2, 2, 2, 2,
@@ -38,4 +38,19 @@ pub const PRESORTED_X: [usize; 64] = [
     A2, A7, B1, B8, G1, G8, H2, H7, /* C */
     B2, B7, G2, G7,                 /* X */
     D4, E4, D5, E5,                 /* center */
+];
+
+/// Used for move sorting
+///
+/// Like SQUARE_VALUE in Edax
+#[rustfmt::skip]
+pub const SQUARE_VALUE: [i32; 64] = [
+	18,  4,  16, 12, 12, 16,  4, 18,
+	 4,  2,   6,  8,  8,  6,  2,  4,
+	16,  6,  14, 10, 10, 14,  6, 16,
+	12,  8,  10,  0,  0, 10,  8, 12,
+	12,  8,  10,  0,  0, 10,  8, 12,
+	16,  6,  14, 10, 10, 14,  6, 16,
+	 4,  2,   6,  8,  8,  6,  2,  4,
+    18,  4,  16, 12, 12, 16,  4, 18
 ];

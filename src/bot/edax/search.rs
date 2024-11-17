@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::bot::edax::r#const::{
     ITERATIVE_MIN_EMPTIES, NO_SELECTIVITY, SCORE_INF, SCORE_MAX, SCORE_MIN,
 };
+use crate::bot::edax::square::SQUARE_VALUE;
 use crate::collections::hashtable::HashData;
 use crate::{
     bot::edax::square::QUADRANT_ID,
@@ -84,6 +85,11 @@ impl Move {
         }
 
         position.get_flipped(x) == self.flipped
+    }
+
+    /// Like move_wipeout() in Edax
+    fn is_wipeout(&self, position: &Position) -> bool {
+        self.flipped == position.opponent
     }
 }
 
@@ -414,6 +420,16 @@ impl Search {
         self.eval.heuristic()
     }
 
+    /// Like search_eval_1() in Edax
+    fn eval_1(&self, _alpha: i32, _beta: i32) -> i32 {
+        todo!() // TODO
+    }
+
+    /// Like search_eval_2() in Edax
+    fn eval_2(&self, _alpha: i32, _beta: i32) -> i32 {
+        todo!() // TODO
+    }
+
     /// Like search_count_nodes() in Edax
     fn count_nodes(&self) -> u64 {
         self.n_nodes.load(Ordering::Relaxed) + self.child_nodes.load(Ordering::Relaxed)
@@ -662,6 +678,16 @@ impl Search {
         result.n_nodes = self.count_nodes();
     }
 
+    /// Like search_update_midgame() in Edax
+    fn update_midgame(&mut self, _move_: &Move) {
+        todo!() // TODO
+    }
+
+    /// Like search_restore_midgame() in Edax
+    fn restore_midgame(&mut self, _move_: &Move) {
+        todo!() // TODO
+    }
+
     /// Like movelist_evaluate() in Edax
     fn evaluate_movelist(
         &mut self,
@@ -702,12 +728,81 @@ impl Search {
     ///
     /// Like move_evaluate() in Edax
     fn evaluate_move(
-        &self,
-        _move_: &mut Move,
-        _hash_data: HashData,
-        _sort_alpha: i32,
-        _sort_depth: i32,
+        &mut self,
+        move_: &mut Move,
+        hash_data: HashData,
+        sort_alpha: i32,
+        sort_depth: i32,
     ) {
+        const WEIGHT_HASH: i32 = 1 << 15;
+        const WEIGHT_EVAL: i32 = 1 << 15;
+        const WEIGHT_MOBILITY: i32 = 1 << 15;
+        const WEIGHT_CORNER_STABILITY: i32 = 1 << 11;
+        const WEIGHT_EDGE_STABILITY: i32 = 1 << 11;
+        const WEIGHT_POTENTIAL_MOBILITY: i32 = 1 << 5;
+        const WEIGHT_LOW_PARITY: i32 = 1 << 3;
+        const WEIGHT_MID_PARITY: i32 = 1 << 2;
+        const WEIGHT_HIGH_PARITY: i32 = 1 << 1;
+
+        if move_.is_wipeout(&self.position) {
+            move_.score = 1 << 30;
+        } else if move_.x == hash_data.move_[0] as i32 {
+            move_.score = 1 << 29;
+        } else if move_.x == hash_data.move_[1] as i32 {
+            move_.score = 1 << 28;
+        } else {
+            move_.score = SQUARE_VALUE[move_.x as usize];
+            if self.n_empties < 12 && (self.parity & QUADRANT_ID[move_.x as usize]) != 0 {
+                move_.score += WEIGHT_LOW_PARITY;
+            } else if self.n_empties < 21 && (self.parity & QUADRANT_ID[move_.x as usize]) != 0 {
+                move_.score += WEIGHT_MID_PARITY;
+            } else if self.n_empties < 30 && (self.parity & QUADRANT_ID[move_.x as usize]) != 0 {
+                move_.score += WEIGHT_HIGH_PARITY;
+            }
+
+            if sort_depth < 0 {
+                // TODO #15 Optimize: use flipped discs from `move_` for doing and undoing move
+                let flipped = self.position.do_move(move_.x as usize);
+
+                move_.score +=
+                    (36 - self.position.potential_mobility()) * WEIGHT_POTENTIAL_MOBILITY;
+                move_.score += self.position.opponent_corner_stability() * WEIGHT_CORNER_STABILITY;
+                move_.score += (36 - self.position.weighted_mobility()) * WEIGHT_MOBILITY;
+
+                self.position.undo_move(move_.x as usize, flipped);
+            } else {
+                let selectivity = self.selectivity;
+                self.selectivity = NO_SELECTIVITY;
+                self.update_midgame(move_);
+                move_.score +=
+                    (36 - self.position.potential_mobility()) * WEIGHT_POTENTIAL_MOBILITY; // potential mobility
+                move_.score += self.position.opponent_edge_stability() * WEIGHT_EDGE_STABILITY; // edge stability
+                move_.score += (36 - self.position.weighted_mobility()) * WEIGHT_MOBILITY; // real mobility
+
+                move_.score += match sort_depth {
+                    0 => ((SCORE_MAX - self.eval_0()) >> 2) * WEIGHT_EVAL,
+                    1 => ((SCORE_MAX - self.eval_1(SCORE_MIN, -sort_alpha)) >> 1) * WEIGHT_EVAL,
+                    2 => ((SCORE_MAX - self.eval_2(SCORE_MIN, -sort_alpha)) >> 1) * WEIGHT_EVAL,
+                    _ => {
+                        let mut score = (SCORE_MAX
+                            - self.pvs_shallow(SCORE_MIN, -sort_alpha, sort_depth))
+                            * WEIGHT_EVAL;
+
+                        if self.hash_table.get(&self.position).is_some() {
+                            score += WEIGHT_HASH;
+                        }
+
+                        score
+                    }
+                };
+                self.restore_midgame(move_);
+                self.selectivity = selectivity;
+            }
+        }
+    }
+
+    /// Like search_pvs_shallow() in Edax
+    fn pvs_shallow(&self, _alpha: i32, _beta: i32, _depth: i32) -> i32 {
         todo!() // TODO
     }
 
