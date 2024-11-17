@@ -25,9 +25,7 @@ impl Bot for EdaxBot {
         }
 
         let mut search = Search::new(position, BLACK, EDAX_LEVEL);
-
-        search.run();
-
-        search.result.move_
+        let result = search.run();
+        result.move_
     }
 }

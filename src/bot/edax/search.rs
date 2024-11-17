@@ -2,6 +2,7 @@
 
 use rand::Rng;
 use std::sync::atomic::{AtomicI64, AtomicU64, AtomicU8, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::bot::edax::r#const::{
@@ -193,7 +194,7 @@ pub struct Search {
     pub n_empties: i32,
 
     /// Result of search, changes during search
-    pub result: SearchResult,
+    pub result: Arc<Mutex<SearchResult>>,
 
     /// Empty squares in `position`
     pub empties: PoolList<Square, 64>,
@@ -270,7 +271,7 @@ impl Search {
             player,
             position: *position,
             n_empties: position.count_empty() as i32,
-            result: SearchResult::default(),
+            result: Arc::new(Mutex::new(SearchResult::default())),
             empties: PoolList::default(),
             movelist: Self::get_movelist(position),
             parity: 0,
@@ -407,19 +408,23 @@ impl Search {
         self.depth_pv_extension = self.get_pv_extension(0);
         self.stability_bound.upper = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
         self.stability_bound.lower = 2 * self.position.count_player_stable_discs() - SCORE_MAX;
-        self.result.score = self.bound(self.eval_0());
-        self.result.n_moves_left = self.movelist.len();
-        self.result.n_moves = self.movelist.len() as i32;
-        self.result.book_move = false;
+
+        let result_arc = self.result.clone();
+
+        let mut result = result_arc.lock().unwrap();
+        result.score = self.bound(self.eval_0());
+        result.n_moves_left = self.movelist.len();
+        result.n_moves = self.movelist.len() as i32;
+        result.book_move = false;
 
         if self.movelist.is_empty() {
-            self.result.bound[PASS] = Bound {
+            result.bound[PASS] = Bound {
                 lower: SCORE_MIN,
                 upper: SCORE_MAX,
             };
         } else {
             for move_ in self.movelist.iter() {
-                self.result.bound[move_.x as usize] = Bound {
+                result.bound[move_.x as usize] = Bound {
                     lower: SCORE_MIN,
                     upper: SCORE_MAX,
                 };
@@ -428,18 +433,18 @@ impl Search {
 
         self.iterative_deepening(SCORE_MIN, SCORE_MAX);
 
-        self.result.n_nodes = self.count_nodes();
+        result.n_nodes = self.count_nodes();
 
         if self.stop.load(Ordering::Relaxed) == Stop::Running as u8 {
             self.stop.store(Stop::StopEnd as u8, Ordering::Relaxed);
         }
 
         self.time.spent.fetch_add(Self::clock(), Ordering::Relaxed);
-        self.result.time = self.time.spent.load(Ordering::Relaxed);
+        result.time = self.time.spent.load(Ordering::Relaxed);
 
         self.sum_nodes();
 
-        self.result.clone()
+        result.clone()
     }
 
     /// Computes final score knowing the number of empty squares.
@@ -497,7 +502,7 @@ impl Search {
 
     /// Like search_adjust_time() in Edax
     fn adjust_time(&self, _new_search: bool) {
-        todo!() // TODO
+        // TODO we don't do time management yet
     }
 
     /// Like record_best_move() in Edax
@@ -530,27 +535,30 @@ impl Search {
     /// Like iterative_deepening() in Edax
     #[allow(unused_assignments)] // TODO
     fn iterative_deepening(&mut self, alpha: i32, beta: i32) {
-        self.result.move_ = NO_MOVE;
-        self.result.score = -SCORE_INF;
-        self.result.depth = -1;
-        self.result.selectivity = 0;
-        self.result.time = 0;
-        self.result.n_nodes = 0;
-        self.result.pv = Line::new(self.player);
+        let result_arc = self.result.clone();
+        let mut result = result_arc.lock().unwrap();
+
+        result.move_ = NO_MOVE;
+        result.score = -SCORE_INF;
+        result.depth = -1;
+        result.selectivity = 0;
+        result.time = 0;
+        result.n_nodes = 0;
+        result.pv = Line::new(self.player);
 
         // Game is over
         if self.movelist.is_empty() && !self.position.opponent_has_moves() {
-            self.result.move_ = NO_MOVE;
-            self.result.score = self.solve();
-            self.result.depth = self.n_empties;
-            self.result.selectivity = NO_SELECTIVITY;
-            self.result.time = self.time.spent.load(Ordering::Relaxed);
-            self.result.n_nodes = self.count_nodes();
-            self.result.bound[NO_MOVE] = Bound {
-                lower: self.result.score,
-                upper: self.result.score,
+            result.move_ = NO_MOVE;
+            result.score = self.solve();
+            result.depth = self.n_empties;
+            result.selectivity = NO_SELECTIVITY;
+            result.time = self.time.spent.load(Ordering::Relaxed);
+            result.n_nodes = self.count_nodes();
+            result.bound[NO_MOVE] = Bound {
+                lower: result.score,
+                upper: result.score,
             };
-            self.result.pv = Line::new(self.player);
+            result.pv = Line::new(self.player);
             return;
         }
 
@@ -570,14 +578,17 @@ impl Search {
             start = 2 - (end & 1);
         }
 
-        self.result.selectivity = if self.options.depth > 10 {
+        result.selectivity = if self.options.depth > 10 {
             0
         } else {
             NO_SELECTIVITY
         };
 
         let mut old_depth = 0;
-        let mut old_selectivity = self.result.selectivity;
+        let mut old_selectivity = result.selectivity;
+
+        // Release mutex, we don't need it anymore
+        drop(result);
 
         if let Some(hash_data) = self.pv_table.get(&self.position) {
             old_depth = hash_data.depth as i32;
