@@ -453,7 +453,46 @@ impl Search {
     ///
     /// Like get_last_level() in Edax
     fn get_last_level(&self) -> Option<(i32, i32)> {
-        todo!()
+        let mut position = self.position;
+
+        let mut depth: i32 = -1;
+        let mut selectivity: i32 = -1;
+
+        let mut i = 0;
+        while i < 4 {
+            let hash_data = if let Some(hash_data) = self.pv_table.get(&position) {
+                hash_data
+            } else if let Some(hash_data) = self.hash_table.get(&position) {
+                hash_data
+            } else {
+                break;
+            };
+
+            let d = hash_data.depth as i32 + i;
+            let s = hash_data.selectivity as i32;
+
+            if d > depth {
+                depth = d;
+            }
+
+            if s > selectivity {
+                selectivity = s;
+            }
+
+            // Edax constructs Move object here, no need for that.
+            let x = hash_data.move_[0] as usize;
+            position.do_move(x);
+
+            if x != PASS {
+                i += 1;
+            }
+        }
+
+        if depth > -1 && selectivity > -1 {
+            Some((depth, selectivity))
+        } else {
+            None
+        }
     }
 
     /// Like search_adjust_time() in Edax
