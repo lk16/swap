@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::Path;
 
 use super::board::BLACK;
-use super::count_stable::count_stable;
+use super::count_stable::{count_stable, get_stable_edge};
 use super::get_flipped::get_flipped;
 use super::get_moves;
 
@@ -333,6 +333,73 @@ impl Position {
     /// Similar to get_stability() in Edax but for the opponent
     pub fn count_opponent_stable_discs(&self) -> i32 {
         count_stable(self.opponent, self.player)
+    }
+
+    /// Like get_potential_moves in Edax
+    fn potential_moves(&self) -> u64 {
+        fn get_some_potential_moves(p: u64, dir: i32) -> u64 {
+            (p << dir) | (p >> dir)
+        }
+
+        let potential_moves = get_some_potential_moves(self.opponent & 0x7E7E7E7E7E7E7E7E, 1) // horizontal
+            | get_some_potential_moves(self.opponent & 0x00FFFFFFFFFFFF00, 8) // vertical
+            | get_some_potential_moves(self.opponent & 0x007E7E7E7E7E7E00, 7) // diagonals
+            | get_some_potential_moves(self.opponent & 0x007E7E7E7E7E7E00, 9);
+
+        let empties = !(self.player | self.opponent);
+
+        potential_moves & empties
+    }
+
+    /// Like get_potential_mobility in Edax
+    pub fn potential_mobility(&self) -> i32 {
+        const CORNERS: u64 = 0x8100000000000081;
+
+        let potential_moves = self.potential_moves();
+
+        (potential_moves.count_ones() as i32) + (potential_moves & CORNERS).count_ones() as i32
+    }
+
+    fn corner_stability_internal(player: u64) -> i32 {
+        let stable = (((0x0100000000000001 & player) << 1)
+            | ((0x8000000000000080 & player) >> 1)
+            | ((0x0000000000000081 & player) << 8)
+            | ((0x8100000000000000 & player) >> 8)
+            | 0x8100000000000081)
+            & player;
+
+        stable.count_ones() as i32
+    }
+
+    /// Like get_corner_stability in Edax
+    pub fn corner_stability(&self) -> i32 {
+        Self::corner_stability_internal(self.player)
+    }
+
+    /// Similar to get_corner_stability() in Edax but for the opponent
+    pub fn opponent_corner_stability(&self) -> i32 {
+        Self::corner_stability_internal(self.opponent)
+    }
+
+    /// Like get_weighted_mobility in Edax
+    pub fn weighted_mobility(&self) -> i32 {
+        const CORNERS: u64 = 0x8100000000000081;
+
+        let moves = self.get_moves();
+
+        (moves.count_ones() as i32) + (moves & CORNERS).count_ones() as i32
+    }
+
+    /// Like get_edge_stability in Edax
+    pub fn edge_stability(&self) -> i32 {
+        let stable = get_stable_edge(self.player, self.opponent);
+        stable.count_ones() as i32
+    }
+
+    /// Similar to get_edge_stability in Edax but for the opponent
+    pub fn opponent_edge_stability(&self) -> i32 {
+        let stable = get_stable_edge(self.opponent, self.player);
+        stable.count_ones() as i32
     }
 }
 

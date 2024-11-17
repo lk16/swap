@@ -125,7 +125,7 @@ lazy_static! {
 }
 
 /** conversion from an 8-bit line to the A1-A8 line */
-const A1_A8: [u64; 256] = [
+pub const A1_A8: [u64; 256] = [
     0x0000000000000000,
     0x0000000000000001,
     0x0000000000000100,
@@ -385,7 +385,7 @@ const A1_A8: [u64; 256] = [
 ];
 
 /** conversion from an 8-bit line to the H1-H8 line */
-const H1_H8: [u64; 256] = [
+pub const H1_H8: [u64; 256] = [
     0x0000000000000000,
     0x0000000000000080,
     0x0000000000008000,
@@ -698,7 +698,7 @@ fn get_full_lines(line: u64, dir: i32) -> u64 {
     full_r & full_l
 }
 
-fn get_stable_edge(player: u64, opponent: u64) -> u64 {
+pub fn get_stable_edge(player: u64, opponent: u64) -> u64 {
     EDGE_STABILITY[(player & 0xff) as usize][(opponent & 0xff) as usize] as u64
         | (EDGE_STABILITY[(player >> 56) as usize][(opponent >> 56) as usize] as u64) << 56
         | A1_A8[EDGE_STABILITY[pack_a1_h8(player)][pack_a1_h8(opponent)] as usize]
