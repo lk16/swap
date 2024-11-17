@@ -317,3 +317,9 @@ pub const NO_SELECTIVITY: i32 = 5;
 /// the engine switches from using midgame evaluation (heuristic scoring)
 /// to endgame evaluation (exact scoring).
 pub const ITERATIVE_MIN_EMPTIES: i32 = 10;
+
+/// Delta value used in move sorting to determine the lower bound for move evaluation.
+/// When evaluating moves for sorting, we use (alpha - SORT_ALPHA_DELTA) as a threshold
+/// to identify promising moves. This helps prune less promising moves early in the search
+/// while ensuring we don't miss potentially good moves that are just slightly below alpha.
+pub const SORT_ALPHA_DELTA: i32 = 8;

@@ -14,7 +14,7 @@ use crate::{
     othello::{position::Position, squares::*},
 };
 
-use super::r#const::{NodeType, GAME_SIZE};
+use super::r#const::{NodeType, GAME_SIZE, SORT_ALPHA_DELTA};
 use super::{
     eval::Eval,
     r#const::{Stop, BLACK, LEVEL},
@@ -661,13 +661,42 @@ impl Search {
         result.n_nodes = self.count_nodes();
     }
 
-    /// Evaluates the movelist in `self.movelist`
+    /// Evaluates the movelist in `self.movelist` in order to sort it
     ///
-    /// Like movelist_evaluate() in Edax, except we don't send movelist as a parameter due to borrowing issues
-    fn evaluate_own_movelist(&mut self, _alpha: i32, _beta: i32) {
-        // TODO use self.movelist
+    /// Like movelist_evaluate() in Edax, except:
+    /// - we don't send movelist as a parameter due to borrowing issues
+    /// - we don't send the hash_data, but retrieve it from `self.pv_table` again
+    fn evaluate_own_movelist(&mut self, alpha: i32, _beta: i32) {
+        let mut min_depth = 9;
+        if self.n_empties <= 27 {
+            min_depth += (30 - self.n_empties) / 3;
+        }
 
-        // TODO retrieve hash data from self.pv_table again
+        let sort_depth = if self.depth >= min_depth {
+            let mut sort_depth = (self.depth - 15) / 3;
+            if let Some(hash_data) = self.pv_table.get(&self.position) {
+                if (hash_data.upper as i32) < alpha {
+                    sort_depth -= 2;
+                }
+            }
+            if self.n_empties >= 27 {
+                sort_depth += 1;
+            }
+
+            sort_depth.clamp(0, 6)
+        } else {
+            -1
+        };
+
+        let sort_alpha = SCORE_MIN.max(alpha - SORT_ALPHA_DELTA);
+        for move_ in self.movelist.iter() {
+            self.evaluate_move(move_, sort_alpha, sort_depth);
+        }
+    }
+
+    /// Like move_evaluate() in Edax, except:
+    /// - we don't send the hash_data, but retrieve it from `self.pv_table` again
+    fn evaluate_move(&self, _move_: &Move, _sort_alpha: i32, _sort_depth: i32) {
         todo!() // TODO
     }
 
