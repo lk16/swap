@@ -697,6 +697,9 @@ impl Search {
         }
     }
 
+    /// Evaluate a move to sort it.
+    /// This sets `score` for the move.
+    ///
     /// Like move_evaluate() in Edax
     fn evaluate_move(
         &self,
