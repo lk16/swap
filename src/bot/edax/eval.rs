@@ -323,6 +323,14 @@ impl Eval {
 
         score
     }
+
+    pub fn features(&self) -> &[i32; EVAL_N_FEATURES] {
+        &self.features
+    }
+
+    pub fn player(&self) -> i32 {
+        self.player
+    }
 }
 
 #[cfg(test)]

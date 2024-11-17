@@ -16,7 +16,9 @@ use crate::{
     othello::{position::Position, squares::*},
 };
 
+use super::eval::EVAL_N_FEATURES;
 use super::r#const::{NodeType, GAME_SIZE, SORT_ALPHA_DELTA};
+use super::weights::EVAL_WEIGHT;
 use super::{
     eval::Eval,
     r#const::{Stop, BLACK, LEVEL},
@@ -415,14 +417,81 @@ impl Search {
         score.clamp(self.stability_bound.lower, self.stability_bound.upper)
     }
 
+    fn update_pass_midgame(&mut self) {
+        todo!() // TODO
+    }
+
+    fn restore_pass_midgame(&mut self) {
+        todo!() // TODO
+    }
+
     /// Like search_eval_0() in Edax
     fn eval_0(&self) -> i32 {
         self.eval.heuristic()
     }
 
     /// Like search_eval_1() in Edax
-    fn eval_1(&self, _alpha: i32, _beta: i32) -> i32 {
-        todo!() // TODO
+    fn eval_1(&mut self, alpha: i32, mut beta: i32) -> i32 {
+        let weights =
+            &EVAL_WEIGHT[(self.eval.player() ^ 1) as usize][(61 - self.n_empties) as usize];
+        let mut bestscore;
+
+        let moves = self.position.get_moves();
+
+        if moves == 0 {
+            if self.position.opponent_has_moves() {
+                self.update_pass_midgame();
+                bestscore = -self.eval_1(beta, alpha);
+                self.restore_pass_midgame();
+            } else {
+                // game over
+                bestscore = self.solve();
+            }
+        } else {
+            bestscore = -SCORE_INF;
+            if beta >= SCORE_MAX {
+                beta = SCORE_MAX - 1;
+            }
+            for empty in self.empties.iter() {
+                if moves & empty.b != 0 {
+                    let flipped = self.position.get_flipped(empty.x as usize);
+
+                    if flipped == self.position.opponent {
+                        return SCORE_MAX;
+                    }
+                    self.eval.do_move(empty.x as usize, flipped);
+                    let f = self.eval.features();
+
+                    let mut score = 0;
+                    for i in 0..EVAL_N_FEATURES {
+                        score -= weights[f[i] as usize] as i32;
+                    }
+
+                    self.eval.undo_move(empty.x as usize, flipped);
+
+                    if score > 0 {
+                        score += 64;
+                    } else {
+                        score -= 64;
+                    }
+                    score /= 128;
+
+                    if score > bestscore {
+                        bestscore = score;
+                        if bestscore >= beta {
+                            break;
+                        }
+                    }
+                }
+            }
+            if bestscore <= SCORE_MIN {
+                bestscore = SCORE_MIN + 1;
+            } else if bestscore >= SCORE_MAX {
+                bestscore = SCORE_MAX - 1;
+            }
+        }
+
+        bestscore
     }
 
     /// Like search_eval_2() in Edax
