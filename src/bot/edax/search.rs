@@ -35,6 +35,7 @@ pub struct Move {
 
     /// Cost of the move
     cost: u32,
+    // TODO #15 Further optimization: add a u64 with bitset of played move
 }
 
 impl PartialOrd for Move {
@@ -56,6 +57,34 @@ pub const MOVE_PASS: Move = Move {
     score: -SCORE_INF,
     cost: 0,
 };
+
+impl Move {
+    fn new(position: &Position, x: i32) -> Self {
+        Self {
+            flipped: position.get_flipped(x as usize),
+            x,
+            score: 0,
+            cost: 0,
+        }
+    }
+
+    /// Like board_check_move() in Edax
+    fn is_legal(&self, position: &Position) -> bool {
+        // TODO #15 Further optimization: this function checks too many things for certain call-sites
+
+        let x = self.x as usize;
+
+        if x == PASS {
+            return !position.has_moves();
+        }
+
+        if (position.player | position.opponent) & (1u64 << x) != 0 {
+            return false;
+        }
+
+        position.get_flipped(x) == self.flipped
+    }
+}
 
 /// Like Result in Edax
 #[derive(Clone)]
@@ -173,6 +202,10 @@ impl Line {
             moves: Vec::new(),
             color,
         }
+    }
+
+    fn push(&mut self, x: u8) {
+        self.moves.push(x);
     }
 }
 
@@ -502,19 +535,130 @@ impl Search {
 
     /// Like search_adjust_time() in Edax
     fn adjust_time(&self, _new_search: bool) {
-        // TODO we don't do time management yet
+        // TODO #14 Implement time management
+    }
+
+    /// Like guess_move() in Edax
+    fn guess_move(&self, _position: &Position) -> usize {
+        unreachable!() // We don't support this.
+    }
+
+    /// Like search_time() in Edax
+    fn get_time_spent(&self) -> i64 {
+        if self.stop.load(Ordering::Relaxed) != Stop::StopEnd as u8 {
+            Self::clock() + self.time.spent.load(Ordering::Relaxed)
+        } else {
+            self.time.spent.load(Ordering::Relaxed)
+        }
     }
 
     /// Like record_best_move() in Edax
     fn record_best_move(
         &mut self,
-        _position: &Position,
-        _move_: &Move,
-        _alpha: i32,
-        _beta: i32,
-        _depth: i32,
+        position: &Position,
+        bestmove: &Move,
+        alpha: i32,
+        beta: i32,
+        depth: i32,
     ) {
-        todo!() // TODO
+        let result_arc = self.result.clone();
+        let mut result = result_arc.lock().unwrap();
+
+        {
+            // Create local copy to avoid borrowing issues
+            let mut bound = result.bound[bestmove.x as usize];
+
+            result.move_ = bestmove.x as usize;
+            result.score = bestmove.score;
+
+            if result.score < beta && result.score < bound.upper {
+                bound.upper = result.score;
+            }
+            if result.score > alpha && result.score > bound.lower {
+                bound.lower = result.score;
+            }
+            if bound.lower > bound.upper {
+                if result.score < beta {
+                    bound.upper = result.score;
+                } else {
+                    bound.upper = self.stability_bound.upper;
+                }
+                if result.score > alpha {
+                    bound.lower = result.score;
+                } else {
+                    bound.lower = self.stability_bound.lower;
+                }
+            }
+
+            result.bound[bestmove.x as usize] = bound;
+        }
+
+        let mut expected_depth = depth;
+        result.depth = depth;
+
+        let expected_selectivity = self.selectivity;
+        result.selectivity = self.selectivity;
+
+        let mut expected_bound = result.bound[bestmove.x as usize];
+
+        result.pv = Line::new(self.player);
+        let mut x = bestmove.x as usize;
+
+        // NOTE: we don't guess the PV, like in Edax.
+        let guess_pv = false;
+
+        let mut fail_low = bestmove.score <= alpha;
+        let mut position = *position;
+
+        // TODO #15 Further optimization: x should never be NO_MOVE here
+        while x != NO_MOVE {
+            // TODO #15 Further optimization: constructing a Move here is unnecessary
+            let move_ = Move::new(&position, x as i32);
+
+            // TODO #15 Further optimization: a move should not be illegal here, since we just created it
+            if !move_.is_legal(&position) {
+                break;
+            }
+
+            position.do_move(x);
+            expected_depth -= 1;
+
+            // Swap and negate bounds
+            expected_bound = Bound {
+                upper: -expected_bound.lower,
+                lower: -expected_bound.upper,
+            };
+
+            fail_low = !fail_low;
+            result.pv.push(x as u8);
+
+            // Try to get hash data from either table
+            let hash_data = self
+                .pv_table
+                .get(&position)
+                .or_else(|| self.hash_table.get(&position));
+
+            // Determine next move
+            x = if let Some(hash_data) = hash_data {
+                // Check if hash data meets our criteria
+                if hash_data.depth as i32 >= expected_depth
+                    && hash_data.selectivity as i32 >= expected_selectivity
+                    && hash_data.upper as i32 <= expected_bound.upper
+                    && hash_data.lower as i32 >= expected_bound.lower
+                {
+                    hash_data.move_[0] as usize
+                } else {
+                    break;
+                }
+            } else if guess_pv && fail_low {
+                self.guess_move(&position)
+            } else {
+                break;
+            };
+        }
+
+        result.time = self.get_time_spent();
+        result.n_nodes = self.count_nodes();
     }
 
     /// Evaluates the movelist in `self.movelist`
@@ -691,7 +835,7 @@ impl Search {
 
         // iterative selectivity
 
-        // TODO pretend we have time, since we don't do time management
+        // TODO #14 pretend we have time, since we don't do time management yet
         let has_time = true;
 
         while self.selectivity <= self.options.selectivity {
