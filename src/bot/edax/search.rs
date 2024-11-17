@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::bot::edax::r#const::{
     ITERATIVE_MIN_EMPTIES, NO_SELECTIVITY, SCORE_INF, SCORE_MAX, SCORE_MIN,
 };
+use crate::collections::hashtable::HashData;
 use crate::{
     bot::edax::square::QUADRANT_ID,
     collections::{forward_pool_list::ForwardPoolList, hashtable::HashTable, pool_list::PoolList},
@@ -661,12 +662,14 @@ impl Search {
         result.n_nodes = self.count_nodes();
     }
 
-    /// Evaluates the movelist in `self.movelist` in order to sort it
-    ///
-    /// Like movelist_evaluate() in Edax, except:
-    /// - we don't send movelist as a parameter due to borrowing issues
-    /// - we don't send the hash_data, but retrieve it from `self.pv_table` again
-    fn evaluate_own_movelist(&mut self, alpha: i32, _beta: i32) {
+    /// Like movelist_evaluate() in Edax
+    fn evaluate_movelist(
+        &mut self,
+        movelist: &mut ForwardPoolList<Move, 64>,
+        hash_data: HashData,
+        alpha: i32,
+        _beta: i32,
+    ) {
         let mut min_depth = 9;
         if self.n_empties <= 27 {
             min_depth += (30 - self.n_empties) / 3;
@@ -689,14 +692,19 @@ impl Search {
         };
 
         let sort_alpha = SCORE_MIN.max(alpha - SORT_ALPHA_DELTA);
-        for move_ in self.movelist.iter() {
-            self.evaluate_move(move_, sort_alpha, sort_depth);
+        for move_ in movelist.iter_mut() {
+            self.evaluate_move(move_, hash_data, sort_alpha, sort_depth);
         }
     }
 
-    /// Like move_evaluate() in Edax, except:
-    /// - we don't send the hash_data, but retrieve it from `self.pv_table` again
-    fn evaluate_move(&self, _move_: &Move, _sort_alpha: i32, _sort_depth: i32) {
+    /// Like move_evaluate() in Edax
+    fn evaluate_move(
+        &self,
+        _move_: &mut Move,
+        _hash_data: HashData,
+        _sort_alpha: i32,
+        _sort_depth: i32,
+    ) {
         todo!() // TODO
     }
 
@@ -816,8 +824,17 @@ impl Search {
                     move_.score = rand::thread_rng().gen::<i32>() & 0x7fffffff;
                 }
             } else {
-                // sort the moves
-                self.evaluate_own_movelist(alpha, start);
+                // Clone movelist to avoid borrowing issues
+                let mut movelist = self.movelist.clone();
+
+                // Get hash data from pv_table
+                let hash_data = *self.pv_table.get(&self.position).unwrap();
+
+                // Set `score` for all moves in movelist
+                self.evaluate_movelist(&mut movelist, hash_data, alpha, start);
+
+                // Replace updated movelist
+                self.movelist = movelist;
             }
             self.movelist.sort();
 
