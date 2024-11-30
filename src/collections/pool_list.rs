@@ -1,6 +1,6 @@
 use std::ptr::NonNull;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Node<T> {
     // Data stored in this node
     data: T,
@@ -67,6 +67,23 @@ pub struct PoolList<T: Default, const N: usize> {
 impl<T: Default, const N: usize> Default for PoolList<T, N> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<T, const N: usize> Clone for PoolList<T, N>
+where
+    T: Clone + Default,
+{
+    fn clone(&self) -> Self {
+        // Create a new empty list first to ensure proper initialization
+        let mut new_list = Self::new();
+
+        // Clone the data from the original list
+        for item in self.iter() {
+            new_list.push(item.clone());
+        }
+
+        new_list
     }
 }
 
@@ -385,5 +402,29 @@ mod tests {
         assert_eq!(*list.get(idx1), 111);
         assert_eq!(*list.get(idx2), 222);
         assert_eq!(*list.get(idx3), 333);
+    }
+
+    #[test]
+    fn test_clone() {
+        let mut original = PoolList::<i32, 4>::new();
+        original.push(111);
+        original.push(222);
+
+        // Validate original before clone
+        validate_list(&original, &[111, 222], 2);
+
+        // Clone and validate
+        let mut cloned = original.clone();
+        validate_list(&cloned, &[111, 222], 2);
+
+        // Modify clone
+        cloned.push(333);
+        cloned.push(444);
+
+        // Validate modified clone
+        validate_list(&cloned, &[111, 222, 333, 444], 0);
+
+        // Verify original is unchanged
+        validate_list(&original, &[111, 222], 2);
     }
 }

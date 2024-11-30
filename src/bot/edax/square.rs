@@ -1,7 +1,7 @@
 use crate::othello::squares::*;
 
 // Like SquareList in Edax
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Square {
     /// Bitset representation of the square
     pub b: u64,

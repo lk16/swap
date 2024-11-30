@@ -506,8 +506,45 @@ impl Search {
     }
 
     /// Like search_eval_2() in Edax
-    fn eval_2(&self, _alpha: i32, _beta: i32) -> i32 {
-        todo!() // TODO
+    fn eval_2(&mut self, mut alpha: i32, beta: i32) -> i32 {
+        let moves = self.position.get_moves();
+
+        let mut bestscore;
+        if moves == 0 {
+            if self.position.opponent_has_moves() {
+                self.update_pass_midgame();
+                bestscore = -self.eval_2(-beta, -alpha);
+                self.restore_pass_midgame();
+            } else {
+                bestscore = self.solve();
+            }
+        } else {
+            bestscore = -SCORE_INF;
+
+            // Clone empties to avoid problems with borrow checker
+            // TODO #15 Further optimization: do not clone empties
+            let empties = self.empties.clone();
+
+            for empty in empties.iter() {
+                if moves & empty.b != 0 {
+                    let move_ = Move::new(&self.position, empty.x);
+                    self.update_midgame(&move_);
+                    let score = -self.eval_1(-beta, -alpha);
+                    self.restore_midgame(&move_);
+
+                    if score > bestscore {
+                        bestscore = score;
+                        if bestscore >= beta {
+                            break;
+                        } else if bestscore > alpha {
+                            alpha = bestscore;
+                        }
+                    }
+                }
+            }
+        }
+
+        bestscore
     }
 
     /// Like search_count_nodes() in Edax
@@ -759,13 +796,42 @@ impl Search {
     }
 
     /// Like search_update_midgame() in Edax
-    fn update_midgame(&mut self, _move_: &Move) {
-        todo!() // TODO
+    fn update_midgame(&mut self, move_: &Move) {
+        const NEXT_NODE_TYPE: [NodeType; 3] =
+            [NodeType::CutNode, NodeType::AllNode, NodeType::CutNode];
+
+        // Update parity by XORing with the quadrant ID of the played move
+        self.parity ^= QUADRANT_ID[move_.x as usize];
+
+        // Remove the played square from empties list using x_to_empties mapping
+        self.empties.remove(self.x_to_empties[move_.x as usize]);
+
+        // Update position and evaluation
+        self.position.do_move(move_.x as usize);
+        self.eval.do_move(move_.x as usize, move_.flipped);
+
+        // Update search state
+        self.n_empties -= 1;
+        self.height += 1;
+        self.node_type[self.height as usize] =
+            NEXT_NODE_TYPE[self.node_type[(self.height - 1) as usize] as usize];
     }
 
     /// Like search_restore_midgame() in Edax
-    fn restore_midgame(&mut self, _move_: &Move) {
-        todo!() // TODO
+    fn restore_midgame(&mut self, move_: &Move) {
+        // Restore parity by XORing again with the same quadrant ID (XOR is its own inverse)
+        self.parity ^= QUADRANT_ID[move_.x as usize];
+
+        // Add back the square to empties list using x_to_empties mapping
+        self.empties.restore(self.x_to_empties[move_.x as usize]);
+
+        // Restore position and evaluation
+        self.position.undo_move(move_.x as usize, move_.flipped);
+        self.eval.undo_move(move_.x as usize, move_.flipped);
+
+        // Restore search state
+        self.n_empties += 1;
+        self.height -= 1;
     }
 
     /// Like movelist_evaluate() in Edax
