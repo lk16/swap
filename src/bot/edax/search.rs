@@ -9,7 +9,7 @@ use crate::bot::edax::r#const::{
     ITERATIVE_MIN_EMPTIES, NO_SELECTIVITY, SCORE_INF, SCORE_MAX, SCORE_MIN,
 };
 use crate::bot::edax::square::SQUARE_VALUE;
-use crate::collections::hashtable::HashData;
+use crate::collections::hashtable::{HashData, StoreArgs};
 use crate::{
     bot::edax::square::QUADRANT_ID,
     collections::{forward_pool_list::ForwardPoolList, hashtable::HashTable, pool_list::PoolList},
@@ -947,8 +947,98 @@ impl Search {
         }
     }
 
-    /// Like search_pvs_shallow() in Edax
-    fn pvs_shallow(&self, _alpha: i32, _beta: i32, _depth: i32) -> i32 {
+    /// Like pvs_shallow() in Edax
+    fn pvs_shallow(&mut self, alpha: i32, mut beta: i32, depth: i32) -> i32 {
+        let mut cost = -(self.n_nodes.load(Ordering::Relaxed) as i64);
+
+        if depth == 2 {
+            return self.eval_2(alpha, beta);
+        }
+
+        if let Some(score) = self.stability_cutoff_pvs(alpha, &mut beta) {
+            return score;
+        }
+
+        let mut movelist = Self::get_movelist(&self.position);
+
+        let mut bestmove;
+        let mut bestscore;
+
+        if movelist.is_empty() {
+            if self.position.opponent_has_moves() {
+                self.update_pass_midgame();
+                bestscore = -self.pvs_shallow(-beta, -alpha, depth);
+                bestmove = PASS;
+            } else {
+                bestscore = self.solve();
+                bestmove = NO_MOVE;
+            }
+        } else {
+            // TODO can we be sure hash_data is present?
+            let hash_data = *self.shallow_table.get(&self.position).unwrap();
+
+            self.evaluate_movelist(&mut movelist, hash_data, alpha, beta);
+            movelist.sort();
+
+            bestscore = -SCORE_INF;
+            bestmove = NO_MOVE;
+            let mut lower = alpha;
+
+            for move_ in movelist.iter() {
+                self.update_midgame(move_);
+
+                let score = if bestscore == -SCORE_INF {
+                    -self.pvs_shallow(-beta, -lower, depth - 1)
+                } else {
+                    let mut score = -self.nws_shallow_with_shallow_table(-lower - 1, depth - 1);
+                    if alpha < score && score < beta {
+                        score = -self.pvs_shallow(-beta, -lower, depth - 1);
+                    }
+
+                    score
+                };
+
+                self.restore_midgame(move_);
+
+                if score > bestscore {
+                    bestscore = score;
+                    bestmove = move_.x as usize;
+
+                    if bestscore >= beta {
+                        break;
+                    } else if bestscore > lower {
+                        lower = bestscore;
+                    }
+                }
+            }
+        }
+
+        cost += self.n_nodes.load(Ordering::Relaxed) as i64;
+
+        self.shallow_table.store(&StoreArgs {
+            position: &self.position,
+            depth,
+            selectivity: self.selectivity,
+            cost: Self::log2(cost),
+            alpha,
+            beta,
+            score: bestscore,
+            move_: bestmove as i32,
+        });
+
+        bestscore
+    }
+
+    fn log2(x: i64) -> i32 {
+        63 - x.leading_zeros() as i32
+    }
+    /// Like search_SC_PVS() in Edax
+    fn stability_cutoff_pvs(&mut self, _alpha: i32, _beta: &mut i32) -> Option<i32> {
+        todo!() // TODO
+    }
+
+    /// Like nws_shallow() in Edax, but using self.shallow_table
+    fn nws_shallow_with_shallow_table(&mut self, _alpha: i32, _depth: i32) -> i32 {
         todo!() // TODO
     }
 

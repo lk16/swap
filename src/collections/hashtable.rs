@@ -202,14 +202,14 @@ impl DerefMut for WriteGuard<'_> {
 }
 
 pub struct StoreArgs<'a> {
-    position: &'a Position,
-    depth: i32,
-    selectivity: i32,
-    cost: i32,
-    alpha: i32,
-    beta: i32,
-    score: i32,
-    move_: i32,
+    pub position: &'a Position,
+    pub depth: i32,
+    pub selectivity: i32,
+    pub cost: i32,
+    pub alpha: i32,
+    pub beta: i32,
+    pub score: i32,
+    pub move_: i32,
 }
 
 /// Thread-safe hash table implementation for storing position evaluations
