@@ -881,7 +881,6 @@ impl Search {
     }
 
     /// Like iterative_deepening() in Edax
-    #[allow(unused_assignments)] // TODO
     fn iterative_deepening(&mut self, alpha: i32, beta: i32) {
         let result_arc = self.result.clone();
         let mut result = result_arc.lock().unwrap();
