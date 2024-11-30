@@ -417,12 +417,23 @@ impl Search {
         score.clamp(self.stability_bound.lower, self.stability_bound.upper)
     }
 
+    /// Like update_pass_midgame() in Edax
     fn update_pass_midgame(&mut self) {
-        todo!() // TODO
+        const NEXT_NODE_TYPE: [NodeType; 3] =
+            [NodeType::CutNode, NodeType::AllNode, NodeType::CutNode];
+
+        self.position.pass();
+        self.eval.pass();
+        self.height += 1;
+        self.node_type[self.height as usize] =
+            NEXT_NODE_TYPE[self.node_type[(self.height - 1) as usize] as usize];
     }
 
+    /// Like restore_pass_midgame() in Edax
     fn restore_pass_midgame(&mut self) {
-        todo!() // TODO
+        self.position.pass();
+        self.eval.pass();
+        self.height -= 1;
     }
 
     /// Like search_eval_0() in Edax
