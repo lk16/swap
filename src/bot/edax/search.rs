@@ -17,7 +17,9 @@ use crate::{
 };
 
 use super::eval::EVAL_N_FEATURES;
-use super::r#const::{NodeType, GAME_SIZE, PVS_STABILITY_THRESHOLD, SORT_ALPHA_DELTA};
+use super::r#const::{
+    NodeType, GAME_SIZE, NWS_STABILITY_THRESHOLD, PVS_STABILITY_THRESHOLD, SORT_ALPHA_DELTA,
+};
 use super::weights::EVAL_WEIGHT;
 use super::{
     eval::Eval,
@@ -1141,23 +1143,40 @@ impl Search {
     }
 
     /// Like search_SC_NWS() in Edax
-    fn stability_cutoff_nws(&mut self, _alpha: i32) -> Option<i32> {
-        todo!() // TODO
+    fn stability_cutoff_nws(&mut self, alpha: i32) -> Option<i32> {
+        if alpha >= NWS_STABILITY_THRESHOLD[self.n_empties as usize] {
+            let score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
+            if score <= alpha {
+                return Some(score);
+            }
+        }
+
+        None
     }
 
     /// Like search_TC_NWS() in Edax
     fn transposition_cutoff_nws(
-        _hash_data: &HashData,
-        _depth: i32,
-        _selectivity: i32,
-        _alpha: i32,
+        hash_data: &HashData,
+        depth: i32,
+        selectivity: i32,
+        alpha: i32,
     ) -> Option<i32> {
-        todo!() // TODO
+        if hash_data.selectivity as i32 >= selectivity && hash_data.depth as i32 >= depth {
+            if alpha < hash_data.lower as i32 {
+                return Some(hash_data.lower as i32);
+            }
+            if alpha >= hash_data.upper as i32 {
+                return Some(hash_data.upper as i32);
+            }
+        }
+
+        None
     }
 
     /// Like search_continue() in Edax
     fn continue_search(&self) -> bool {
-        todo!() // TODO
+        // TODO #14 when we support time management, we need to check if we have time left
+        self.stop.load(Ordering::Relaxed) == Stop::Running as u8
     }
 
     /// Like iterative_deepening() in Edax
