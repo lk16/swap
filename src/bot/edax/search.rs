@@ -1019,7 +1019,7 @@ impl Search {
             position: &self.position,
             depth,
             selectivity: self.selectivity,
-            cost: Self::log2(cost),
+            cost: cost.ilog2() as i32,
             alpha,
             beta,
             score: bestscore,
@@ -1029,9 +1029,6 @@ impl Search {
         bestscore
     }
 
-    fn log2(x: i64) -> i32 {
-        63 - x.leading_zeros() as i32
-    }
     /// Like search_SC_PVS() in Edax
     fn stability_cutoff_pvs(&mut self, _alpha: i32, _beta: &mut i32) -> Option<i32> {
         todo!() // TODO
