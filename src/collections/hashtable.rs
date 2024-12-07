@@ -15,8 +15,9 @@ const BUCKET_SIZE: usize = 4;
 
 /// Represents cached evaluation data for an othello position
 ///
-/// Like HashData in Edax
-#[derive(Clone, Copy, Default)]
+/// Stores evaluation scores, move history, and metadata for a position.
+/// Like HashData in Edax.
+#[derive(Clone, Copy)]
 pub struct HashData {
     pub depth: u8,
     pub selectivity: u8,
@@ -25,6 +26,21 @@ pub struct HashData {
     pub lower: i8,
     pub upper: i8,
     pub move_: [u8; 2],
+}
+
+impl Default for HashData {
+    /// Like HASH_DATA_INIT in Edax
+    fn default() -> Self {
+        Self {
+            depth: 0,
+            selectivity: 0,
+            cost: 0,
+            date: 0,
+            lower: SCORE_MIN as i8,
+            upper: SCORE_MAX as i8,
+            move_: [NO_MOVE as u8, NO_MOVE as u8],
+        }
+    }
 }
 
 impl HashData {
@@ -201,18 +217,23 @@ impl DerefMut for WriteGuard<'_> {
     }
 }
 
+/// Arguments for storing position data in the hash table
 pub struct StoreArgs<'a> {
     pub position: &'a Position,
     pub depth: i32,
     pub selectivity: i32,
     pub cost: i32,
-    pub alpha: i32,
-    pub beta: i32,
-    pub score: i32,
-    pub move_: i32,
+    pub alpha: i32, // Lower bound for alpha-beta search
+    pub beta: i32,  // Upper bound for alpha-beta search
+    pub score: i32, // Evaluation score for the position
+    pub move_: i32, // Best move found so far
 }
 
 /// Thread-safe hash table implementation for storing position evaluations
+///
+/// Implements a fixed-size hash table with bucket-based collision handling.
+/// Each bucket contains BUCKET_SIZE entries that are protected by RwLocks
+/// for concurrent access.
 pub struct HashTable {
     buckets: Box<[RwLock<Bucket>]>,
     mask: usize,
@@ -270,55 +291,25 @@ impl HashTable {
         *entry = Entry::new(date, args);
     }
 
-    /// Retrieves a read-only reference to a cached position evaluation
-    pub fn get(&self, position: &Position) -> Option<ReadGuard> {
+    /// Retrieves a HashData for a given position, or None if the position is not cached
+    pub fn get(&self, position: &Position) -> Option<HashData> {
         let bucket_idx = self.get_bucket_index(position);
         let bucket = &self.buckets[bucket_idx];
 
         // Find the entry and update date with write lock
-        let mut found_idx = None;
         let mut entries = bucket.write().unwrap();
-        for (i, entry) in entries.iter_mut().enumerate() {
+        for entry in entries.iter_mut() {
             if entry.position == *position {
                 entry.hash_data.date = self.date.load(Ordering::Relaxed);
-                found_idx = Some(i);
-                break;
-            }
-        }
-
-        // Drop write lock, so we can take read lock below
-        // Shadowing the variable drops the write lock as well, but we want to be more explicit.
-        drop(entries);
-
-        if let Some(found_idx) = found_idx {
-            // Take read lock and verify the entry is still there
-            let entries = bucket.read().unwrap();
-            if entries[found_idx].position == *position {
-                return Some(ReadGuard {
-                    entries,
-                    idx: found_idx,
-                });
+                return Some(entry.hash_data);
             }
         }
 
         None
     }
 
-    /// Retrieves a mutable reference to a cached position evaluation
-    pub fn get_mut(&self, position: &Position) -> Option<WriteGuard> {
-        let bucket_idx = self.get_bucket_index(position);
-        let bucket = &self.buckets[bucket_idx];
-        let mut entries = bucket.write().unwrap();
-
-        for (idx, entry) in entries.iter_mut().enumerate() {
-            if entry.position == *position {
-                // Update entry's date to current date
-                entry.hash_data.date = self.date.load(Ordering::Relaxed);
-                return Some(WriteGuard { entries, idx });
-            }
-        }
-
-        None
+    pub fn get_or_default(&self, position: &Position) -> HashData {
+        self.get(position).unwrap_or_default()
     }
 
     /// Completely clears the hash table by resetting all entries
@@ -466,23 +457,6 @@ mod tests {
         // Verify the new entry exists
         let result = table.get(&new_pos);
         assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_get_mut() {
-        let table = HashTable::new(16);
-        let pos = Position::new();
-
-        table.store(&StoreArgs::from_pos_and_depth(&pos, 5));
-
-        // Modify using get_mut
-        if let Some(mut guard) = table.get_mut(&pos) {
-            guard.depth = 20;
-        }
-
-        // Verify modification
-        let guard = table.get(&pos).expect("Should find stored position");
-        assert_eq!(guard.depth, 20);
     }
 
     #[test]

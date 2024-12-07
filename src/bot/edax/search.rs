@@ -838,7 +838,7 @@ impl Search {
     fn evaluate_movelist(
         &mut self,
         movelist: &mut ForwardPoolList<Move, 64>,
-        hash_data: HashData,
+        hash_data: &HashData,
         alpha: i32,
         _beta: i32,
     ) {
@@ -876,7 +876,7 @@ impl Search {
     fn evaluate_move(
         &mut self,
         move_: &mut Move,
-        hash_data: HashData,
+        hash_data: &HashData,
         sort_alpha: i32,
         sort_depth: i32,
     ) {
@@ -974,10 +974,9 @@ impl Search {
                 bestmove = NO_MOVE;
             }
         } else {
-            // TODO can we be sure hash_data is present?
-            let hash_data = *self.shallow_table.get(&self.position).unwrap();
+            let hash_data = self.shallow_table.get_or_default(&self.position);
 
-            self.evaluate_movelist(&mut movelist, hash_data, alpha, beta);
+            self.evaluate_movelist(&mut movelist, &hash_data, alpha, beta);
             movelist.sort();
 
             bestscore = -SCORE_INF;
@@ -1044,7 +1043,115 @@ impl Search {
     }
 
     /// Like nws_shallow() in Edax, but using self.shallow_table
-    fn nws_shallow_with_shallow_table(&mut self, _alpha: i32, _depth: i32) -> i32 {
+    fn nws_shallow_with_shallow_table(&mut self, alpha: i32, depth: i32) -> i32 {
+        self.nws_shallow::<true>(alpha, depth)
+    }
+
+    /// Like nws_shallow() in Edax, but using self.hash_table
+    fn nws_shallow_with_hash_table(&mut self, alpha: i32, depth: i32) -> i32 {
+        self.nws_shallow::<false>(alpha, depth)
+    }
+
+    fn nws_shallow<const USE_SHALLOW_TABLE: bool>(&mut self, alpha: i32, depth: i32) -> i32 {
+        let beta = alpha + 1;
+        let mut cost = -(self.n_nodes.load(Ordering::Relaxed) as i64);
+
+        if depth == 2 {
+            return self.eval_2(alpha, beta);
+        }
+
+        if let Some(score) = self.stability_cutoff_nws(alpha) {
+            return score;
+        }
+
+        let hash_data = if USE_SHALLOW_TABLE {
+            self.shallow_table.get(&self.position)
+        } else {
+            self.hash_table.get(&self.position)
+        };
+
+        if let Some(ref hash_data) = hash_data {
+            if let Some(score) =
+                Self::transposition_cutoff_nws(hash_data, depth, self.selectivity, alpha)
+            {
+                return score;
+            }
+        }
+
+        let hash_data = hash_data.unwrap_or_default();
+
+        let mut movelist = Self::get_movelist(&self.position);
+
+        let mut bestscore;
+        let mut bestmove;
+
+        if movelist.is_empty() {
+            if self.position.opponent_has_moves() {
+                self.update_pass_midgame();
+                bestscore = -self.nws_shallow::<USE_SHALLOW_TABLE>(-beta, depth - 1);
+                bestmove = PASS;
+                self.restore_pass_midgame();
+            } else {
+                bestscore = self.solve();
+                bestmove = NO_MOVE;
+            }
+        } else {
+            self.evaluate_movelist(&mut movelist, &hash_data, alpha, beta);
+            movelist.sort();
+
+            bestscore = -SCORE_INF;
+            bestmove = NO_MOVE;
+
+            for move_ in movelist.iter() {
+                self.update_midgame(move_);
+                let score = -self.nws_shallow::<USE_SHALLOW_TABLE>(-beta, depth - 1);
+                self.restore_midgame(move_);
+
+                if score > bestscore {
+                    bestscore = score;
+                    bestmove = move_.x as usize;
+
+                    if bestscore >= beta {
+                        break;
+                    }
+                }
+            }
+        }
+
+        cost += self.n_nodes.load(Ordering::Relaxed) as i64;
+
+        let store_args = StoreArgs {
+            position: &self.position,
+            depth,
+            selectivity: self.selectivity,
+            cost: cost.ilog2() as i32,
+            alpha,
+            beta,
+            score: bestscore,
+            move_: bestmove as i32,
+        };
+
+        if USE_SHALLOW_TABLE {
+            self.shallow_table.store(&store_args);
+        } else {
+            self.hash_table.store(&store_args);
+        }
+
+        bestscore
+    }
+
+    /// Like search_SC_NWS() in Edax
+    fn stability_cutoff_nws(&mut self, _alpha: i32) -> Option<i32> {
+        todo!() // TODO
+    }
+
+    /// Like search_TC_NWS() in Edax
+    fn transposition_cutoff_nws(
+        _hash_data: &HashData,
+        _depth: i32,
+        _selectivity: i32,
+        _alpha: i32,
+    ) -> Option<i32> {
         todo!() // TODO
     }
 
@@ -1167,10 +1274,10 @@ impl Search {
                 let mut movelist = self.movelist.clone();
 
                 // Get hash data from pv_table
-                let hash_data = *self.pv_table.get(&self.position).unwrap();
+                let hash_data = self.pv_table.get_or_default(&self.position);
 
                 // Set `score` for all moves in movelist
-                self.evaluate_movelist(&mut movelist, hash_data, alpha, start);
+                self.evaluate_movelist(&mut movelist, &hash_data, alpha, start);
 
                 // Replace updated movelist
                 self.movelist = movelist;
