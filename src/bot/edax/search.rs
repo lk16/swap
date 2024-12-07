@@ -1521,8 +1521,12 @@ impl Search {
     }
 
     /// Like is_depth_solving() in Edax
-    fn is_depth_solving(_depth: i32, _n_empties: i32) -> bool {
-        todo!() // TODO
+    fn is_depth_solving(depth: i32, n_empties: i32) -> bool {
+        (depth >= n_empties)
+            || (depth > 9 && depth <= 12 && depth + 8 >= n_empties)
+            || (depth > 12 && depth <= 18 && depth + 10 >= n_empties)
+            || (depth > 18 && depth <= 24 && depth + 12 >= n_empties)
+            || (depth > 24 && depth + 14 >= n_empties)
     }
 
     /// Like is_pv_ok() in Edax
