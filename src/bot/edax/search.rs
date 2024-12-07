@@ -10,6 +10,7 @@ use crate::bot::edax::r#const::{
 };
 use crate::bot::edax::square::SQUARE_VALUE;
 use crate::collections::hashtable::{HashData, StoreArgs};
+use crate::othello::position::GameState;
 use crate::{
     bot::edax::square::QUADRANT_ID,
     collections::{forward_pool_list::ForwardPoolList, hashtable::HashTable, pool_list::PoolList},
@@ -94,6 +95,17 @@ impl Move {
     /// Like move_wipeout() in Edax
     fn is_wipeout(&self, position: &Position) -> bool {
         self.flipped == position.opponent
+    }
+
+    /// Like board_update() in Edax
+    fn apply(&self, position: &mut Position) {
+        if self.x == PASS as i32 {
+            position.pass();
+        } else {
+            position.player |= self.flipped | (1u64 << self.x as usize);
+            position.opponent ^= self.flipped;
+            std::mem::swap(&mut position.player, &mut position.opponent);
+        }
     }
 }
 
@@ -1530,8 +1542,41 @@ impl Search {
     }
 
     /// Like is_pv_ok() in Edax
-    fn is_pv_ok(&self, _bestmove_: i32, _depth: i32) -> bool {
-        todo!() // TODO
+    fn is_pv_ok(&self, bestmove: i32, mut depth: i32) -> bool {
+        let mut position = self.position;
+        let mut x = bestmove;
+
+        while depth > 0 && x != NO_MOVE as i32 {
+            if x != PASS as i32 {
+                depth -= 1;
+            }
+
+            let move_ = Move::new(&position, x);
+            move_.apply(&mut position);
+
+            let hash_data = if let Some(hash_data) = self.pv_table.get(&position) {
+                x = hash_data.move_[0] as i32;
+                hash_data
+            } else if let Some(hash_data) = self.hash_table.get(&position) {
+                x = hash_data.move_[0] as i32;
+                hash_data
+            } else {
+                break;
+            };
+
+            if (hash_data.depth as i32) < depth
+                || (hash_data.selectivity as i32) < self.selectivity
+                || hash_data.lower != hash_data.upper
+            {
+                return false;
+            }
+
+            if x == NO_MOVE as i32 && position.game_state() != GameState::Finished {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Like PVS_root() in Edax

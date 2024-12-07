@@ -185,10 +185,7 @@ impl Position {
             return GameState::HasMoves;
         }
 
-        let mut passed = *self;
-        passed.pass();
-
-        if passed.has_moves() {
+        if self.opponent_has_moves() {
             return GameState::Passed;
         }
 
