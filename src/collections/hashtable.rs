@@ -1,5 +1,3 @@
-#![allow(dead_code)] // TODO remove
-
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};

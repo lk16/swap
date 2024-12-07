@@ -325,7 +325,6 @@ pub const ITERATIVE_MIN_EMPTIES: i32 = 10;
 pub const SORT_ALPHA_DELTA: i32 = 8;
 
 /** threshold values to try stability cutoff during PVS search */
-// TODO: better values may exist.
 #[rustfmt::skip]
 pub const PVS_STABILITY_THRESHOLD: [i32; 56] = [ // 99 = unused value...
     99, 99, 99, 99, -2,  0,  2,  4,
@@ -338,7 +337,6 @@ pub const PVS_STABILITY_THRESHOLD: [i32; 56] = [ // 99 = unused value...
 ];
 
 /** threshold values to try stability cutoff during NWS search */
-// TODO: better values may exist.
 #[rustfmt::skip]
 pub const NWS_STABILITY_THRESHOLD: [i32; 56] = [ // 99 = unused value...
     99, 99, 99, 99,  6,  8, 10, 12,
