@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::eval::EVAL_N_FEATURES;
-use super::r#const::{NodeType, GAME_SIZE, SORT_ALPHA_DELTA};
+use super::r#const::{NodeType, GAME_SIZE, PVS_STABILITY_THRESHOLD, SORT_ALPHA_DELTA};
 use super::weights::EVAL_WEIGHT;
 use super::{
     eval::Eval,
@@ -1030,8 +1030,17 @@ impl Search {
     }
 
     /// Like search_SC_PVS() in Edax
-    fn stability_cutoff_pvs(&mut self, _alpha: i32, _beta: &mut i32) -> Option<i32> {
-        todo!() // TODO
+    fn stability_cutoff_pvs(&mut self, alpha: i32, beta: &mut i32) -> Option<i32> {
+        if *beta >= PVS_STABILITY_THRESHOLD[self.n_empties as usize] {
+            let score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
+            if score <= alpha {
+                return Some(score);
+            } else if score < *beta {
+                *beta = score;
+            }
+        }
+
+        None
     }
 
     /// Like nws_shallow() in Edax, but using self.shallow_table
