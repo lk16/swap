@@ -163,6 +163,9 @@ pub struct SerachOptions {
 
     /// If true, preserves hashtable date when `Search::run()` is called
     keep_date: bool,
+
+    /// Depth to use for multipv
+    multipv_depth: i32,
 }
 
 /// Like unnamed struct field `time` of Search in Edax
@@ -1382,7 +1385,153 @@ impl Search {
     }
 
     /// Like aspiration_search() in Edax
-    fn aspiration_search(&mut self, _alpha: i32, _beta: i32, _depth: i32, _score: i32) -> i32 {
+    fn aspiration_search(
+        &mut self,
+        mut alpha: i32,
+        mut beta: i32,
+        depth: i32,
+        mut score: i32,
+    ) -> i32 {
+        if Self::is_depth_solving(depth, self.n_empties) {
+            if alpha & 1 != 0 {
+                alpha -= 1;
+            }
+            if beta & 1 != 0 {
+                beta += 1;
+            }
+        }
+
+        if depth <= self.options.multipv_depth {
+            alpha = SCORE_MIN;
+            beta = SCORE_MAX;
+        }
+
+        let mut high = SCORE_MAX.min(self.stability_bound.upper + 2);
+        let mut low = SCORE_MIN.max(self.stability_bound.lower - 2);
+
+        alpha = alpha.max(low);
+        beta = beta.min(high);
+        score = score.clamp(low, high);
+        score = score.clamp(alpha, beta);
+
+        let mut result = self.result.lock().unwrap();
+
+        for move_ in self.movelist.iter() {
+            result.bound[move_.x as usize] = Bound {
+                lower: low,
+                upper: high,
+            };
+        }
+
+        drop(result);
+
+        let width = {
+            let mut width = 10 - depth;
+            width = width.min(1);
+
+            if width & 1 != 0 && depth == self.n_empties {
+                width += 1;
+            }
+
+            width
+        };
+
+        let mut left: i32;
+        let mut right: i32;
+
+        for i in 0..10 {
+            let old_score = score;
+
+            if depth < self.options.multipv_depth || beta - alpha <= 2 * width {
+                score = self.pvs_root(alpha, beta, depth);
+            } else {
+                left = if i <= 0 { 1 } else { i } * width;
+                right = left;
+
+                loop {
+                    low = (score - left).max(alpha);
+                    high = (score + right).min(beta);
+
+                    if low >= high {
+                        break;
+                    }
+
+                    if low >= SCORE_MAX {
+                        low = SCORE_MAX - 1;
+                    }
+
+                    if high <= SCORE_MIN {
+                        high = SCORE_MIN + 1;
+                    }
+
+                    score = self.pvs_root(low, high, depth);
+
+                    if self.stop.load(Ordering::Relaxed) != Stop::Running as u8 {
+                        break;
+                    }
+
+                    if score <= low && score > alpha && left > 0 {
+                        left *= 2;
+                        right = 0;
+                    } else if score >= high && score < beta && right > 0 {
+                        left = 0;
+                        right *= 2;
+                    } else {
+                        break;
+                    }
+                }
+
+                if self.stop.load(Ordering::Relaxed) != Stop::Running as u8 {
+                    break;
+                }
+
+                if Self::is_depth_solving(depth, self.n_empties)
+                    && ((alpha < score && score < beta)
+                        || (score == alpha && score == SCORE_MIN)
+                        || (score == beta && score == SCORE_MAX))
+                    && !Self::is_pv_ok(self, self.result.lock().unwrap().move_ as i32, depth)
+                {
+                    break;
+                }
+
+                if Self::is_depth_solving(depth, self.n_empties) && (score & 1) != 0 {
+                    break;
+                }
+
+                if score == old_score {
+                    break;
+                }
+            }
+        }
+
+        if self.stop.load(Ordering::Relaxed) != Stop::Running as u8 {
+            // TODO #15: Refactor to avoid cloning
+            // Make local copies to avoid borrowing issues
+            let position = self.position;
+            let bestmove = *self.movelist.first().unwrap();
+
+            self.record_best_move(&position, &bestmove, alpha, beta, depth);
+        }
+
+        // TODO #14: update search time
+
+        self.result.lock().unwrap().n_nodes = self.count_nodes();
+
+        score
+    }
+
+    /// Like is_depth_solving() in Edax
+    fn is_depth_solving(_depth: i32, _n_empties: i32) -> bool {
+        todo!() // TODO
+    }
+
+    /// Like is_pv_ok() in Edax
+    fn is_pv_ok(&self, _bestmove_: i32, _depth: i32) -> bool {
+        todo!() // TODO
+    }
+
+    /// Like PVS_root() in Edax
+    fn pvs_root(&mut self, _alpha: i32, _beta: i32, _depth: i32) -> i32 {
         todo!() // TODO
     }
 }
