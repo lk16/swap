@@ -24,7 +24,7 @@ impl Bot for EdaxBot {
             return moves.trailing_zeros() as usize;
         }
 
-        let mut search = Search::new(position, BLACK, EDAX_LEVEL);
+        let search = Search::new(position, BLACK, EDAX_LEVEL);
         let result = search.run();
         result.move_
     }
