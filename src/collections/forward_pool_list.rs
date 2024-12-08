@@ -307,6 +307,16 @@ impl<'a, T> Iterator for IterMut<'a, T> {
     }
 }
 
+/// Implements `Send` for `ForwardPoolList`, allowing it to be transferred across thread boundaries.
+///
+/// # Safety
+/// This implementation is safe because:
+/// - All internal pointers (`NonNull`) are derived from the `nodes` Vec, which never changes location
+/// - The Vec is never resized after creation
+/// - All access to shared data is properly synchronized through mutable/shared references
+/// - The underlying type T must be both Send and Sync
+unsafe impl<T: Default + PartialOrd + Send + Sync, const N: usize> Send for ForwardPoolList<T, N> {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
