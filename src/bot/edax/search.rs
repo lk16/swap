@@ -693,47 +693,56 @@ impl Search {
             self.shallow_table.clear();
         }
 
-        let mut state = self.state.lock().unwrap();
-        state.height = 0;
-        state.node_type[0] = NodeType::PvNode;
-        state.depth_pv_extension = state.get_pv_extension(0);
-        state.stability_bound.upper = SCORE_MAX - 2 * state.position.count_opponent_stable_discs();
-        state.stability_bound.lower = 2 * state.position.count_player_stable_discs() - SCORE_MAX;
+        {
+            let mut state = self.state.lock().unwrap();
+            state.height = 0;
+            state.node_type[0] = NodeType::PvNode;
+            state.depth_pv_extension = state.get_pv_extension(0);
+            state.stability_bound.upper =
+                SCORE_MAX - 2 * state.position.count_opponent_stable_discs();
+            state.stability_bound.lower =
+                2 * state.position.count_player_stable_discs() - SCORE_MAX;
 
-        let mut result = self.result.lock().unwrap();
-        result.score = state.bound(state.eval_0());
-        result.n_moves_left = state.movelist.len();
-        result.n_moves = state.movelist.len() as i32;
-        result.book_move = false;
+            let mut result = self.result.lock().unwrap();
+            result.score = state.bound(state.eval_0());
+            result.n_moves_left = state.movelist.len();
+            result.n_moves = state.movelist.len() as i32;
+            result.book_move = false;
 
-        if state.movelist.is_empty() {
-            result.bound[PASS] = Bound {
-                lower: SCORE_MIN,
-                upper: SCORE_MAX,
-            };
-        } else {
-            for move_ in state.movelist.iter() {
-                result.bound[move_.x as usize] = Bound {
+            if state.movelist.is_empty() {
+                result.bound[PASS] = Bound {
                     lower: SCORE_MIN,
                     upper: SCORE_MAX,
                 };
+            } else {
+                for move_ in state.movelist.iter() {
+                    result.bound[move_.x as usize] = Bound {
+                        lower: SCORE_MIN,
+                        upper: SCORE_MAX,
+                    };
+                }
             }
         }
 
+        // TODO consider sending guards as arguments to avoid locking twice here and in other functions.
         self.iterative_deepening(SCORE_MIN, SCORE_MAX);
 
-        result.n_nodes = self.count_nodes();
+        {
+            let mut result = self.result.lock().unwrap();
 
-        if self.stop.load(Ordering::Relaxed) == Stop::Running as u8 {
-            self.stop.store(Stop::StopEnd as u8, Ordering::Relaxed);
+            result.n_nodes = self.count_nodes();
+
+            if self.stop.load(Ordering::Relaxed) == Stop::Running as u8 {
+                self.stop.store(Stop::StopEnd as u8, Ordering::Relaxed);
+            }
+
+            self.time.spent.fetch_add(Self::clock(), Ordering::Relaxed);
+            result.time = self.time.spent.load(Ordering::Relaxed);
+
+            self.sum_nodes();
+
+            result.clone()
         }
-
-        self.time.spent.fetch_add(Self::clock(), Ordering::Relaxed);
-        result.time = self.time.spent.load(Ordering::Relaxed);
-
-        self.sum_nodes();
-
-        result.clone()
     }
 
     /// Returns Some((depth, selectivity)) if found in hash tables, None otherwise
