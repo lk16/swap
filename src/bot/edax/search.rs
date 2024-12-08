@@ -645,7 +645,7 @@ impl Search {
         let state = SearchState::new(position);
         let n_empties = state.n_empties;
 
-        #[allow(clippy::arc_with_non_send_sync)]
+        #[allow(clippy::arc_with_non_send_sync)] // TODO
         Arc::new(Self {
             player,
             state: Mutex::new(state),
