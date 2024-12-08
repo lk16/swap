@@ -64,6 +64,16 @@ pub struct PoolList<T: Default, const N: usize> {
     free: Option<NonNull<Node<T>>>,
 }
 
+/// Implements `Send` for `PoolList`, allowing it to be transferred across thread boundaries.
+///
+/// # Safety
+/// This implementation is safe because:
+/// - All internal pointers (`NonNull`) are derived from the `nodes` Vec, which never changes location
+/// - The Vec is never resized after creation
+/// - All access to shared data is properly synchronized through mutable/shared references
+/// - The underlying type T must be both Send and Sync
+unsafe impl<T: Default + Send + Sync, const N: usize> Send for PoolList<T, N> {}
+
 impl<T: Default, const N: usize> Default for PoolList<T, N> {
     fn default() -> Self {
         Self::new()

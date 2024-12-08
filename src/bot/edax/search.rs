@@ -341,6 +341,230 @@ impl SearchState {
 
         movelist
     }
+
+    /// Like get_pv_extension() in Edax
+    fn get_pv_extension(&self, depth: i32) -> i32 {
+        let n_empties = self.n_empties;
+
+        if depth >= n_empties || depth <= 9 {
+            -1
+        } else if depth <= 12 {
+            10
+        } else if depth <= 18 {
+            12
+        } else if depth <= 24 {
+            14
+        } else {
+            16
+        }
+    }
+
+    /// Like search_bound() in Edax
+    fn bound(&self, score: i32) -> i32 {
+        score.clamp(self.stability_bound.lower, self.stability_bound.upper)
+    }
+
+    /// Like update_pass_midgame() in Edax
+    fn update_pass_midgame(&mut self) {
+        const NEXT_NODE_TYPE: [NodeType; 3] =
+            [NodeType::CutNode, NodeType::AllNode, NodeType::CutNode];
+
+        self.position.pass();
+        self.eval.pass();
+        self.height += 1;
+        self.node_type[self.height as usize] =
+            NEXT_NODE_TYPE[self.node_type[(self.height - 1) as usize] as usize];
+    }
+
+    /// Like restore_pass_midgame() in Edax
+    fn restore_pass_midgame(&mut self) {
+        self.position.pass();
+        self.eval.pass();
+        self.height -= 1;
+    }
+
+    /// Like search_eval_0() in Edax
+    fn eval_0(&self) -> i32 {
+        self.eval.heuristic()
+    }
+
+    /// Like search_eval_1() in Edax
+    fn eval_1(&mut self, alpha: i32, mut beta: i32) -> i32 {
+        let weights =
+            &EVAL_WEIGHT[(self.eval.player() ^ 1) as usize][(61 - self.n_empties) as usize];
+        let mut bestscore;
+
+        let moves = self.position.get_moves();
+
+        if moves == 0 {
+            if self.position.opponent_has_moves() {
+                self.update_pass_midgame();
+                bestscore = -self.eval_1(beta, alpha);
+                self.restore_pass_midgame();
+            } else {
+                // game over
+                bestscore = self.solve();
+            }
+        } else {
+            bestscore = -SCORE_INF;
+            if beta >= SCORE_MAX {
+                beta = SCORE_MAX - 1;
+            }
+            for empty in self.empties.iter() {
+                if moves & empty.b != 0 {
+                    let flipped = self.position.get_flipped(empty.x as usize);
+
+                    if flipped == self.position.opponent {
+                        return SCORE_MAX;
+                    }
+                    self.eval.do_move(empty.x as usize, flipped);
+                    let f = self.eval.features();
+
+                    let mut score = 0;
+                    for i in 0..EVAL_N_FEATURES {
+                        score -= weights[f[i] as usize] as i32;
+                    }
+
+                    self.eval.undo_move(empty.x as usize, flipped);
+
+                    if score > 0 {
+                        score += 64;
+                    } else {
+                        score -= 64;
+                    }
+                    score /= 128;
+
+                    if score > bestscore {
+                        bestscore = score;
+                        if bestscore >= beta {
+                            break;
+                        }
+                    }
+                }
+            }
+            if bestscore <= SCORE_MIN {
+                bestscore = SCORE_MIN + 1;
+            } else if bestscore >= SCORE_MAX {
+                bestscore = SCORE_MAX - 1;
+            }
+        }
+
+        bestscore
+    }
+
+    /// Like search_eval_2() in Edax
+    fn eval_2(&mut self, mut alpha: i32, beta: i32) -> i32 {
+        let moves = self.position.get_moves();
+
+        let mut bestscore;
+        if moves == 0 {
+            if self.position.opponent_has_moves() {
+                self.update_pass_midgame();
+                bestscore = -self.eval_2(-beta, -alpha);
+                self.restore_pass_midgame();
+            } else {
+                bestscore = self.solve();
+            }
+        } else {
+            bestscore = -SCORE_INF;
+
+            // Clone empties to avoid problems with borrow checker
+            // TODO #15 Further optimization: do not clone empties
+            let empties = self.empties.clone();
+
+            for empty in empties.iter() {
+                if moves & empty.b != 0 {
+                    let move_ = Move::new(&self.position, empty.x);
+                    self.update_midgame(&move_);
+                    let score = -self.eval_1(-beta, -alpha);
+                    self.restore_midgame(&move_);
+
+                    if score > bestscore {
+                        bestscore = score;
+                        if bestscore >= beta {
+                            break;
+                        } else if bestscore > alpha {
+                            alpha = bestscore;
+                        }
+                    }
+                }
+            }
+        }
+
+        bestscore
+    }
+
+    /// Computes final score knowing the number of empty squares.
+    ///
+    /// Like search_solve() in Edax
+    fn solve(&self) -> i32 {
+        self.position.final_score_with_empty(self.n_empties)
+    }
+
+    /// Like search_update_midgame() in Edax
+    fn update_midgame(&mut self, move_: &Move) {
+        const NEXT_NODE_TYPE: [NodeType; 3] =
+            [NodeType::CutNode, NodeType::AllNode, NodeType::CutNode];
+
+        // Update parity by XORing with the quadrant ID of the played move
+        self.parity ^= QUADRANT_ID[move_.x as usize];
+
+        // Remove the played square from empties list using x_to_empties mapping
+        self.empties.remove(self.x_to_empties[move_.x as usize]);
+
+        // Update position and evaluation
+        self.position.do_move(move_.x as usize);
+        self.eval.do_move(move_.x as usize, move_.flipped);
+
+        // Update search state
+        self.n_empties -= 1;
+        self.height += 1;
+        self.node_type[self.height as usize] =
+            NEXT_NODE_TYPE[self.node_type[(self.height - 1) as usize] as usize];
+    }
+
+    /// Like search_restore_midgame() in Edax
+    fn restore_midgame(&mut self, move_: &Move) {
+        // Restore parity by XORing again with the same quadrant ID (XOR is its own inverse)
+        self.parity ^= QUADRANT_ID[move_.x as usize];
+
+        // Add back the square to empties list using x_to_empties mapping
+        self.empties.restore(self.x_to_empties[move_.x as usize]);
+
+        // Restore position and evaluation
+        self.position.undo_move(move_.x as usize, move_.flipped);
+        self.eval.undo_move(move_.x as usize, move_.flipped);
+
+        // Restore search state
+        self.n_empties += 1;
+        self.height -= 1;
+    }
+
+    /// Like search_SC_NWS() in Edax
+    fn stability_cutoff_nws(&self, alpha: i32) -> Option<i32> {
+        if alpha >= NWS_STABILITY_THRESHOLD[self.n_empties as usize] {
+            let score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
+            if score <= alpha {
+                return Some(score);
+            }
+        }
+
+        None
+    }
+
+    /// Like search_SC_PVS() in Edax
+    fn stability_cutoff_pvs(&mut self, alpha: i32, beta: &mut i32) -> Option<i32> {
+        if *beta >= PVS_STABILITY_THRESHOLD[self.n_empties as usize] {
+            let score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
+            if score <= alpha {
+                return Some(score);
+            } else if score < *beta {
+                *beta = score;
+            }
+        }
+
+        None
+    }
 }
 
 /// Search configuration that changes less frequently
@@ -421,7 +645,6 @@ impl Search {
         let state = SearchState::new(position);
         let n_empties = state.n_empties;
 
-        #[allow(clippy::arc_with_non_send_sync)]
         Arc::new(Self {
             player,
             state: Mutex::new(state),
@@ -443,168 +666,6 @@ impl Search {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_millis() as i64
-    }
-
-    /// Like get_pv_extension() in Edax
-    fn get_pv_extension(state: &SearchState, depth: i32) -> i32 {
-        // TODO move into SearchState impl
-
-        let n_empties = state.n_empties;
-
-        if depth >= n_empties || depth <= 9 {
-            -1
-        } else if depth <= 12 {
-            10
-        } else if depth <= 18 {
-            12
-        } else if depth <= 24 {
-            14
-        } else {
-            16
-        }
-    }
-
-    /// Like search_bound() in Edax
-    fn bound(state: &SearchState, score: i32) -> i32 {
-        // TODO move into SearchState impl
-        score.clamp(state.stability_bound.lower, state.stability_bound.upper)
-    }
-
-    /// Like update_pass_midgame() in Edax
-    fn update_pass_midgame(state: &mut SearchState) {
-        // TODO move into SearchState impl
-        const NEXT_NODE_TYPE: [NodeType; 3] =
-            [NodeType::CutNode, NodeType::AllNode, NodeType::CutNode];
-
-        state.position.pass();
-        state.eval.pass();
-        state.height += 1;
-        state.node_type[state.height as usize] =
-            NEXT_NODE_TYPE[state.node_type[(state.height - 1) as usize] as usize];
-    }
-
-    /// Like restore_pass_midgame() in Edax
-    fn restore_pass_midgame(state: &mut SearchState) {
-        // TODO move into SearchState impl
-        state.position.pass();
-        state.eval.pass();
-        state.height -= 1;
-    }
-
-    /// Like search_eval_0() in Edax
-    fn eval_0(state: &SearchState) -> i32 {
-        // TODO move into SearchState impl
-        state.eval.heuristic()
-    }
-
-    /// Like search_eval_1() in Edax
-    fn eval_1(state: &mut SearchState, alpha: i32, mut beta: i32) -> i32 {
-        // TODO move into SearchState impl
-
-        let weights =
-            &EVAL_WEIGHT[(state.eval.player() ^ 1) as usize][(61 - state.n_empties) as usize];
-        let mut bestscore;
-
-        let moves = state.position.get_moves();
-
-        if moves == 0 {
-            if state.position.opponent_has_moves() {
-                Self::update_pass_midgame(state);
-                bestscore = -Self::eval_1(state, beta, alpha);
-                Self::restore_pass_midgame(state);
-            } else {
-                // game over
-                bestscore = Self::solve(state);
-            }
-        } else {
-            bestscore = -SCORE_INF;
-            if beta >= SCORE_MAX {
-                beta = SCORE_MAX - 1;
-            }
-            for empty in state.empties.iter() {
-                if moves & empty.b != 0 {
-                    let flipped = state.position.get_flipped(empty.x as usize);
-
-                    if flipped == state.position.opponent {
-                        return SCORE_MAX;
-                    }
-                    state.eval.do_move(empty.x as usize, flipped);
-                    let f = state.eval.features();
-
-                    let mut score = 0;
-                    for i in 0..EVAL_N_FEATURES {
-                        score -= weights[f[i] as usize] as i32;
-                    }
-
-                    state.eval.undo_move(empty.x as usize, flipped);
-
-                    if score > 0 {
-                        score += 64;
-                    } else {
-                        score -= 64;
-                    }
-                    score /= 128;
-
-                    if score > bestscore {
-                        bestscore = score;
-                        if bestscore >= beta {
-                            break;
-                        }
-                    }
-                }
-            }
-            if bestscore <= SCORE_MIN {
-                bestscore = SCORE_MIN + 1;
-            } else if bestscore >= SCORE_MAX {
-                bestscore = SCORE_MAX - 1;
-            }
-        }
-
-        bestscore
-    }
-
-    /// Like search_eval_2() in Edax
-    fn eval_2(state: &mut SearchState, mut alpha: i32, beta: i32) -> i32 {
-        // TODO move into SearchState impl
-
-        let moves = state.position.get_moves();
-
-        let mut bestscore;
-        if moves == 0 {
-            if state.position.opponent_has_moves() {
-                Self::update_pass_midgame(state);
-                bestscore = -Self::eval_2(state, -beta, -alpha);
-                Self::restore_pass_midgame(state);
-            } else {
-                bestscore = Self::solve(state);
-            }
-        } else {
-            bestscore = -SCORE_INF;
-
-            // Clone empties to avoid problems with borrow checker
-            // TODO #15 Further optimization: do not clone empties
-            let empties = state.empties.clone();
-
-            for empty in empties.iter() {
-                if moves & empty.b != 0 {
-                    let move_ = Move::new(&state.position, empty.x);
-                    Self::update_midgame(state, &move_);
-                    let score = -Self::eval_1(state, -beta, -alpha);
-                    Self::restore_midgame(state, &move_);
-
-                    if score > bestscore {
-                        bestscore = score;
-                        if bestscore >= beta {
-                            break;
-                        } else if bestscore > alpha {
-                            alpha = bestscore;
-                        }
-                    }
-                }
-            }
-        }
-
-        bestscore
     }
 
     /// Like search_count_nodes() in Edax
@@ -631,56 +692,56 @@ impl Search {
             self.shallow_table.clear();
         }
 
-        let mut state = self.state.lock().unwrap();
-        state.height = 0;
-        state.node_type[0] = NodeType::PvNode;
-        state.depth_pv_extension = Self::get_pv_extension(&state, 0);
-        state.stability_bound.upper = SCORE_MAX - 2 * state.position.count_opponent_stable_discs();
-        state.stability_bound.lower = 2 * state.position.count_player_stable_discs() - SCORE_MAX;
+        {
+            let mut state = self.state.lock().unwrap();
+            state.height = 0;
+            state.node_type[0] = NodeType::PvNode;
+            state.depth_pv_extension = state.get_pv_extension(0);
+            state.stability_bound.upper =
+                SCORE_MAX - 2 * state.position.count_opponent_stable_discs();
+            state.stability_bound.lower =
+                2 * state.position.count_player_stable_discs() - SCORE_MAX;
 
-        let mut result = self.result.lock().unwrap();
-        result.score = Self::bound(&state, Self::eval_0(&state));
-        result.n_moves_left = state.movelist.len();
-        result.n_moves = state.movelist.len() as i32;
-        result.book_move = false;
+            let mut result = self.result.lock().unwrap();
+            result.score = state.bound(state.eval_0());
+            result.n_moves_left = state.movelist.len();
+            result.n_moves = state.movelist.len() as i32;
+            result.book_move = false;
 
-        if state.movelist.is_empty() {
-            result.bound[PASS] = Bound {
-                lower: SCORE_MIN,
-                upper: SCORE_MAX,
-            };
-        } else {
-            for move_ in state.movelist.iter() {
-                result.bound[move_.x as usize] = Bound {
+            if state.movelist.is_empty() {
+                result.bound[PASS] = Bound {
                     lower: SCORE_MIN,
                     upper: SCORE_MAX,
                 };
+            } else {
+                for move_ in state.movelist.iter() {
+                    result.bound[move_.x as usize] = Bound {
+                        lower: SCORE_MIN,
+                        upper: SCORE_MAX,
+                    };
+                }
             }
         }
 
+        // TODO consider sending guards as arguments to avoid locking twice here and in other functions.
         self.iterative_deepening(SCORE_MIN, SCORE_MAX);
 
-        result.n_nodes = self.count_nodes();
+        {
+            let mut result = self.result.lock().unwrap();
 
-        if self.stop.load(Ordering::Relaxed) == Stop::Running as u8 {
-            self.stop.store(Stop::StopEnd as u8, Ordering::Relaxed);
+            result.n_nodes = self.count_nodes();
+
+            if self.stop.load(Ordering::Relaxed) == Stop::Running as u8 {
+                self.stop.store(Stop::StopEnd as u8, Ordering::Relaxed);
+            }
+
+            self.time.spent.fetch_add(Self::clock(), Ordering::Relaxed);
+            result.time = self.time.spent.load(Ordering::Relaxed);
+
+            self.sum_nodes();
+
+            result.clone()
         }
-
-        self.time.spent.fetch_add(Self::clock(), Ordering::Relaxed);
-        result.time = self.time.spent.load(Ordering::Relaxed);
-
-        self.sum_nodes();
-
-        result.clone()
-    }
-
-    /// Computes final score knowing the number of empty squares.
-    ///
-    /// Like search_solve() in Edax
-    fn solve(state: &SearchState) -> i32 {
-        // TODO move into SearchState impl
-
-        state.position.final_score_with_empty(state.n_empties)
     }
 
     /// Returns Some((depth, selectivity)) if found in hash tables, None otherwise
@@ -860,49 +921,6 @@ impl Search {
         result.n_nodes = self.count_nodes();
     }
 
-    /// Like search_update_midgame() in Edax
-    fn update_midgame(state: &mut SearchState, move_: &Move) {
-        // TODO move into SearchState impl
-
-        const NEXT_NODE_TYPE: [NodeType; 3] =
-            [NodeType::CutNode, NodeType::AllNode, NodeType::CutNode];
-
-        // Update parity by XORing with the quadrant ID of the played move
-        state.parity ^= QUADRANT_ID[move_.x as usize];
-
-        // Remove the played square from empties list using x_to_empties mapping
-        state.empties.remove(state.x_to_empties[move_.x as usize]);
-
-        // Update position and evaluation
-        state.position.do_move(move_.x as usize);
-        state.eval.do_move(move_.x as usize, move_.flipped);
-
-        // Update search state
-        state.n_empties -= 1;
-        state.height += 1;
-        state.node_type[state.height as usize] =
-            NEXT_NODE_TYPE[state.node_type[(state.height - 1) as usize] as usize];
-    }
-
-    /// Like search_restore_midgame() in Edax
-    fn restore_midgame(state: &mut SearchState, move_: &Move) {
-        // TODO move into SearchState impl
-
-        // Restore parity by XORing again with the same quadrant ID (XOR is its own inverse)
-        state.parity ^= QUADRANT_ID[move_.x as usize];
-
-        // Add back the square to empties list using x_to_empties mapping
-        state.empties.restore(state.x_to_empties[move_.x as usize]);
-
-        // Restore position and evaluation
-        state.position.undo_move(move_.x as usize, move_.flipped);
-        state.eval.undo_move(move_.x as usize, move_.flipped);
-
-        // Restore search state
-        state.n_empties += 1;
-        state.height -= 1;
-    }
-
     /// Like movelist_evaluate() in Edax
     fn evaluate_movelist(
         self: &Arc<Self>,
@@ -996,22 +1014,16 @@ impl Search {
                 config.selectivity = NO_SELECTIVITY;
                 drop(config);
 
-                Self::update_midgame(&mut state, move_);
+                state.update_midgame(move_);
                 move_.score +=
                     (36 - state.position.potential_mobility()) * WEIGHT_POTENTIAL_MOBILITY; // potential mobility
                 move_.score += state.position.opponent_edge_stability() * WEIGHT_EDGE_STABILITY; // edge stability
                 move_.score += (36 - state.position.weighted_mobility()) * WEIGHT_MOBILITY; // real mobility
 
                 move_.score += match sort_depth {
-                    0 => ((SCORE_MAX - Self::eval_0(&state)) >> 2) * WEIGHT_EVAL,
-                    1 => {
-                        ((SCORE_MAX - Self::eval_1(&mut state, SCORE_MIN, -sort_alpha)) >> 1)
-                            * WEIGHT_EVAL
-                    }
-                    2 => {
-                        ((SCORE_MAX - Self::eval_2(&mut state, SCORE_MIN, -sort_alpha)) >> 1)
-                            * WEIGHT_EVAL
-                    }
+                    0 => ((SCORE_MAX - state.eval_0()) >> 2) * WEIGHT_EVAL,
+                    1 => ((SCORE_MAX - state.eval_1(SCORE_MIN, -sort_alpha)) >> 1) * WEIGHT_EVAL,
+                    2 => ((SCORE_MAX - state.eval_2(SCORE_MIN, -sort_alpha)) >> 1) * WEIGHT_EVAL,
                     _ => {
                         let mut score = (SCORE_MAX
                             - self.pvs_shallow(SCORE_MIN, -sort_alpha, sort_depth))
@@ -1024,7 +1036,7 @@ impl Search {
                         score
                     }
                 };
-                Self::restore_midgame(&mut state, move_);
+                state.restore_midgame(move_);
 
                 self.config.write().unwrap().selectivity = selectivity;
             }
@@ -1038,10 +1050,10 @@ impl Search {
         let mut state = self.state.lock().unwrap();
 
         if depth == 2 {
-            return Self::eval_2(&mut state, alpha, beta);
+            return state.eval_2(alpha, beta);
         }
 
-        if let Some(score) = Self::stability_cutoff_pvs(&mut state, alpha, &mut beta) {
+        if let Some(score) = state.stability_cutoff_pvs(alpha, &mut beta) {
             return score;
         }
 
@@ -1052,11 +1064,11 @@ impl Search {
 
         if movelist.is_empty() {
             if state.position.opponent_has_moves() {
-                Self::update_pass_midgame(&mut state);
+                state.update_pass_midgame();
                 bestscore = -self.pvs_shallow(-beta, -alpha, depth);
                 bestmove = PASS;
             } else {
-                bestscore = Self::solve(&state);
+                bestscore = state.solve();
                 bestmove = NO_MOVE;
             }
         } else {
@@ -1070,7 +1082,7 @@ impl Search {
             let mut lower = alpha;
 
             for move_ in movelist.iter() {
-                Self::update_midgame(&mut state, move_);
+                state.update_midgame(move_);
 
                 let score = if bestscore == -SCORE_INF {
                     -self.pvs_shallow(-beta, -lower, depth - 1)
@@ -1083,7 +1095,7 @@ impl Search {
                     score
                 };
 
-                Self::restore_midgame(&mut state, move_);
+                state.restore_midgame(move_);
 
                 if score > bestscore {
                     bestscore = score;
@@ -1114,22 +1126,6 @@ impl Search {
         bestscore
     }
 
-    /// Like search_SC_PVS() in Edax
-    fn stability_cutoff_pvs(state: &mut SearchState, alpha: i32, beta: &mut i32) -> Option<i32> {
-        // TODO move into SearchState impl
-
-        if *beta >= PVS_STABILITY_THRESHOLD[state.n_empties as usize] {
-            let score = SCORE_MAX - 2 * state.position.count_opponent_stable_discs();
-            if score <= alpha {
-                return Some(score);
-            } else if score < *beta {
-                *beta = score;
-            }
-        }
-
-        None
-    }
-
     /// Like nws_shallow() in Edax, but using self.shallow_table
     fn nws_shallow_with_shallow_table(self: &Arc<Self>, alpha: i32, depth: i32) -> i32 {
         // TODO inline this
@@ -1151,10 +1147,10 @@ impl Search {
         let mut state = self.state.lock().unwrap();
 
         if depth == 2 {
-            return Self::eval_2(&mut state, alpha, beta);
+            return state.eval_2(alpha, beta);
         }
 
-        if let Some(score) = Self::stability_cutoff_nws(&state, alpha) {
+        if let Some(score) = state.stability_cutoff_nws(alpha) {
             return score;
         }
 
@@ -1177,12 +1173,12 @@ impl Search {
 
         if movelist.is_empty() {
             if state.position.opponent_has_moves() {
-                Self::update_pass_midgame(&mut state);
+                state.update_pass_midgame();
                 bestscore = -self.nws_shallow(beta, depth - 1, table);
                 bestmove = PASS;
-                Self::restore_pass_midgame(&mut state);
+                state.restore_pass_midgame();
             } else {
-                bestscore = Self::solve(&state);
+                bestscore = state.solve();
                 bestmove = NO_MOVE;
             }
         } else {
@@ -1193,9 +1189,9 @@ impl Search {
             bestmove = NO_MOVE;
 
             for move_ in movelist.iter() {
-                Self::update_midgame(&mut state, move_);
+                state.update_midgame(move_);
                 let score = -self.nws_shallow(-beta, depth - 1, table);
-                Self::restore_midgame(&mut state, move_);
+                state.restore_midgame(move_);
 
                 if score > bestscore {
                     bestscore = score;
@@ -1224,20 +1220,6 @@ impl Search {
         table.store(&store_args);
 
         bestscore
-    }
-
-    /// Like search_SC_NWS() in Edax
-    fn stability_cutoff_nws(state: &SearchState, alpha: i32) -> Option<i32> {
-        // TODO move into SearchState impl
-
-        if alpha >= NWS_STABILITY_THRESHOLD[state.n_empties as usize] {
-            let score = SCORE_MAX - 2 * state.position.count_opponent_stable_discs();
-            if score <= alpha {
-                return Some(score);
-            }
-        }
-
-        None
     }
 
     /// Like search_TC_NWS() in Edax
@@ -1282,7 +1264,7 @@ impl Search {
         // Game is over
         if state.movelist.is_empty() && !state.position.opponent_has_moves() {
             result.move_ = NO_MOVE;
-            result.score = Self::solve(&state);
+            result.score = state.solve();
             result.depth = state.n_empties;
             result.selectivity = NO_SELECTIVITY;
             result.time = self.time.spent.load(Ordering::Relaxed);
@@ -1297,7 +1279,7 @@ impl Search {
 
         let options_depth = self.config.read().unwrap().options.depth;
 
-        let mut score = Self::bound(&state, Self::eval_0(&state));
+        let mut score = state.bound(state.eval_0());
         let mut end = options_depth;
         if end >= state.n_empties {
             end = state.n_empties - ITERATIVE_MIN_EMPTIES + 2;
@@ -1408,7 +1390,7 @@ impl Search {
         // midgame: iterative depth
         let mut depth = start;
         while depth < end {
-            state.depth_pv_extension = Self::get_pv_extension(&state, depth);
+            state.depth_pv_extension = state.get_pv_extension(depth);
             score = self.aspiration_search(alpha, beta, depth, score);
 
             if !self.continue_search() {
