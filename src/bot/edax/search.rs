@@ -229,7 +229,7 @@ impl Search {
     /// - calls `setup()` to initialize other fields
     pub fn new(position: &Position, player: i32, level: i32) -> Arc<Self> {
         let state = SearchState::new(position);
-        let n_empties = state.n_empties;
+        let n_empties = position.count_empty() as i32;
 
         Arc::new(Self {
             player,

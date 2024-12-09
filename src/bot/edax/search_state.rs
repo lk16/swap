@@ -370,4 +370,8 @@ mod tests {
             assert_eq!(state.x_to_empties[empty.x as usize], i);
         }
     }
+
+    // TODO check invariants for new() explcitly
+
+    // TODO check for all other functions that `SearchState::new(state.position)` is consistent with `state`
 }
