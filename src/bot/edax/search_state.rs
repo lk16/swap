@@ -80,14 +80,7 @@ impl SearchState {
 
         for (i, &x) in PRESORTED_X.iter().enumerate() {
             if e & (1 << x) != 0 {
-                let square = Square {
-                    b: 1 << x,
-                    x: x as i32,
-                    quadrant: QUADRANT_ID[x],
-                };
-
-                empties.push(square);
-
+                empties.push(Square::new(x));
                 x_to_empties[x] = i;
             }
         }
@@ -348,7 +341,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_search_initialization() {
+    fn test_state_initialization() {
         // Test new() with a custom position
         let custom_pos = Position::new();
         let state = SearchState::new(&custom_pos);

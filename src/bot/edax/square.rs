@@ -13,6 +13,16 @@ pub struct Square {
     pub quadrant: u32,
 }
 
+impl Square {
+    pub fn new(x: usize) -> Self {
+        Self {
+            b: 1 << x,
+            x: x as i32,
+            quadrant: QUADRANT_ID[x],
+        }
+    }
+}
+
 #[rustfmt::skip]
 pub const QUADRANT_ID: [u32; 66] = [
     1, 1, 1, 1, 2, 2, 2, 2,
