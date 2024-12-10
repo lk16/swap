@@ -1,3 +1,5 @@
+use rand::Rng;
+
 use crate::{
     collections::{forward_pool_list::ForwardPoolList, pool_list::PoolList},
     othello::position::Position,
@@ -15,87 +17,93 @@ use super::{
     weights::EVAL_WEIGHT,
 };
 
-/// Mutable search state that changes frequently during search
+/// Mutable search state that changes frequently during search.
+///
+/// All fields are private to maintain the following invariants (verified in tests):
+/// - `n_empties` matches the actual count of empty squares in `position`
+/// - `parity` contains quadrant parity of `position`
+/// - `empties` contains only squares that are actually empty in `position`
+/// - `x_to_empties` correctly maps square indices to their position in `empties`
+/// - `eval` correctly represents the evaluation state of `position`
+///
+/// These invariants are maintained by all public methods and the constructor.
+/// See the test module for verification of these invariants.
 pub struct SearchState {
     /// Search position, changes during search
-    pub position: Position,
+    position: Position,
 
     /// Number of empty squares in `position`
-    pub n_empties: i32,
+    n_empties: i32,
 
     /// Empty squares in `position`
-    pub empties: PoolList<Square, 64>,
+    empties: PoolList<Square, 64>,
 
     /// Legal moves in `position`
-    pub movelist: ForwardPoolList<Move, 64>,
+    move_list: ForwardPoolList<Move, 64>,
 
     /// Quadrant parity of `position`
-    pub parity: u32,
+    parity: u32,
 
     /// Evaluation of `position`
-    pub eval: Eval,
+    eval: Eval,
 
     /// Index of the empty square in `empties`
-    pub x_to_empties: [usize; 64],
+    x_to_empties: [usize; 64],
 
     /// Height of the search tree
-    pub height: i32,
+    height: i32,
 
     /// Type of the node at `height`
-    pub node_type: [NodeType; GAME_SIZE],
+    node_type: [NodeType; GAME_SIZE],
 
     /// Depth of PV extension
-    pub depth_pv_extension: i32,
+    depth_pv_extension: i32,
 
     /// Stability bound
-    pub stability_bound: Bound,
+    stability_bound: Bound,
 }
 
 impl SearchState {
+    /// Includes logic of search_setup()
     pub fn new(position: &Position) -> Self {
-        let (empties, x_to_empties, parity) = Self::setup(position);
+        let n_empties = position.count_empty() as i32;
 
-        Self {
-            position: *position,
-            n_empties: position.count_empty() as i32,
-            empties,
-            parity,
-            eval: Eval::new(position),
-            x_to_empties,
-            movelist: Self::get_movelist(position),
-            height: 0,
-            node_type: [NodeType::default(); GAME_SIZE],
-            depth_pv_extension: 0,
-            stability_bound: Bound::default(),
-        }
-    }
-
-    /// Like search_setup() in Edax
-    fn setup(position: &Position) -> (PoolList<Square, 64>, [usize; 64], u32) {
         let mut empties = PoolList::default();
         let mut x_to_empties = [0; 64];
         let mut parity = 0;
 
-        let e = !(position.player | position.opponent);
+        let empties_bitset = !(position.player | position.opponent);
 
-        for (i, &x) in PRESORTED_X.iter().enumerate() {
-            if e & (1 << x) != 0 {
-                empties.push(Square::new(x));
-                x_to_empties[x] = i;
+        for x in PRESORTED_X {
+            if empties_bitset & (1 << x) != 0 {
+                x_to_empties[x] = empties.push(Square::new(x));
+                parity ^= QUADRANT_ID[x];
             }
         }
 
-        for empty in empties.iter() {
-            parity ^= empty.x as u32;
+        Self {
+            position: *position,
+            n_empties,
+            empties,
+            parity,
+            eval: Eval::new(position),
+            x_to_empties,
+            move_list: Self::get_movelist(position),
+            height: 0,
+            node_type: [NodeType::default(); GAME_SIZE],
+            depth_pv_extension: Self::get_pv_extension(n_empties, 0),
+            stability_bound: Bound {
+                upper: SCORE_MAX - 2 * position.count_opponent_stable_discs(),
+                lower: 2 * position.count_player_stable_discs() - SCORE_MAX,
+            },
         }
-
-        (empties, x_to_empties, parity)
     }
 
     /// Like search_get_movelist() in Edax
     pub fn get_movelist(position: &Position) -> ForwardPoolList<Move, 64> {
         let mut movelist = ForwardPoolList::new();
 
+        // TODO #15 further optimization: can we use from_iter() to build the list faster?
         for x in position.iter_move_indices() {
             let move_ = Move {
                 cost: 0,
@@ -111,9 +119,7 @@ impl SearchState {
     }
 
     /// Like get_pv_extension() in Edax
-    pub fn get_pv_extension(&self, depth: i32) -> i32 {
-        let n_empties = self.n_empties;
-
+    fn get_pv_extension(n_empties: i32, depth: i32) -> i32 {
         if depth >= n_empties || depth <= 9 {
             -1
         } else if depth <= 12 {
@@ -321,7 +327,7 @@ impl SearchState {
     }
 
     /// Like search_SC_PVS() in Edax
-    pub fn stability_cutoff_pvs(&mut self, alpha: i32, beta: &mut i32) -> Option<i32> {
+    pub fn stability_cutoff_pvs(&self, alpha: i32, beta: &mut i32) -> Option<i32> {
         if *beta >= PVS_STABILITY_THRESHOLD[self.n_empties as usize] {
             let score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
             if score <= alpha {
@@ -333,45 +339,512 @@ impl SearchState {
 
         None
     }
+
+    pub fn move_list(&self) -> &ForwardPoolList<Move, 64> {
+        &self.move_list
+    }
+
+    /// Returns a mutable reference to the move list.
+    ///
+    /// # Contract
+    /// The caller MUST ensure that:
+    /// - No moves are added to or removed from the list
+    /// - Only the scores or ordering of existing moves are modified
+    ///
+    /// Violating these requirements will break internal invariants and may cause
+    /// incorrect behavior, though it won't cause memory safety issues.
+    pub fn move_list_mut(&mut self) -> &mut ForwardPoolList<Move, 64> {
+        &mut self.move_list
+    }
+
+    pub fn position(&self) -> &Position {
+        &self.position
+    }
+
+    pub fn stability_bound(&self) -> &Bound {
+        &self.stability_bound
+    }
+
+    pub fn n_empties(&self) -> i32 {
+        self.n_empties
+    }
+
+    pub fn parity(&self) -> u32 {
+        self.parity
+    }
+
+    pub fn sort_move_list(&mut self) {
+        self.move_list.sort();
+    }
+
+    pub fn set_best_move_score(&mut self, score: i32) {
+        self.move_list.first_mut().unwrap().score = score;
+    }
+
+    pub fn get_best_move(&self) -> &Move {
+        self.move_list.first().unwrap()
+    }
+
+    pub fn set_pv_extension(&mut self, depth: i32) {
+        self.depth_pv_extension = Self::get_pv_extension(self.n_empties, depth);
+    }
+
+    pub fn randomize_move_list_score(&mut self) {
+        for move_ in self.move_list.iter_mut() {
+            move_.score = rand::thread_rng().gen::<i32>() & 0x7fffffff;
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashSet;
+
+    use crate::bot::edax::eval::tests::test_positions;
+
     use super::*;
 
+    impl SearchState {
+        fn check_invariant_parity(&self) {
+            let mut expected_parity = 0;
+            for i in 0..64 {
+                if (self.position.player | self.position.opponent) & (1 << i) == 0 {
+                    expected_parity ^= QUADRANT_ID[i as usize] as u32;
+                }
+            }
+            assert_eq!(self.parity, expected_parity);
+        }
+
+        fn check_invariant_n_empties(&self) {
+            assert_eq!(self.n_empties, self.position.count_empty() as i32);
+        }
+
+        fn check_invariant_empties(&self) {
+            let expected_empties = (0..64)
+                .filter(|&i| (self.position.player | self.position.opponent) & (1 << i) == 0)
+                .collect::<HashSet<_>>();
+
+            let empties = self.empties.iter().map(|s| s.x).collect::<HashSet<_>>();
+            assert_eq!(empties, expected_empties);
+        }
+
+        fn check_invariant_x_to_empties(&self) {
+            let empties = self.empties.iter().map(|s| s.x).collect::<HashSet<_>>();
+
+            for (x, &empty_index) in self.x_to_empties.iter().enumerate() {
+                if empties.contains(&(x as i32)) {
+                    assert_eq!(self.empties.get(empty_index).x, x as i32);
+                }
+                // NOTE: if x is not in empties, it should not be used and the value can be anything.
+            }
+        }
+
+        fn check_invariant_eval(&self) {
+            let expected_eval = if self.eval.player() == 0 {
+                Eval::new(&self.position)
+            } else {
+                Eval::new_for_opponent(&self.position)
+            };
+
+            assert_eq!(self.eval, expected_eval);
+        }
+
+        fn validate(&self, expected_position: &Position) {
+            // Print position, since we use randomized positions for state.
+            println!("self.position = {:?}", self.position);
+            println!("{}", self.position);
+
+            assert_eq!(self.position, *expected_position);
+
+            self.check_invariant_parity();
+            self.check_invariant_n_empties();
+            self.check_invariant_empties();
+            self.check_invariant_x_to_empties();
+            self.check_invariant_eval();
+        }
+    }
+
     #[test]
-    fn test_state_initialization() {
-        // Test new() with a custom position
-        let custom_pos = Position::new();
-        let state = SearchState::new(&custom_pos);
-        verify_invariants(&state);
-    }
-
-    fn verify_invariants(state: &SearchState) {
-        // Check n_empties matches actual empty squares count
-        assert_eq!(state.n_empties, state.position.count_empty() as i32);
-
-        // Check parity calculation
-        let mut expected_parity = 0;
-        for empty in state.empties.iter() {
-            expected_parity ^= empty.x as u32;
-        }
-        assert_eq!(state.parity, expected_parity);
-
-        // Check empties contains only empty squares
-        let empty_squares = !(state.position.player | state.position.opponent);
-        for empty in state.empties.iter() {
-            assert_ne!(empty.b & empty_squares, 0);
-        }
-
-        // Check x_to_empties is correctly set up
-        for (i, empty) in state.empties.iter().enumerate() {
-            assert_eq!(state.x_to_empties[empty.x as usize], i);
+    fn test_search_state_invariants_new() {
+        // Test new() with initial position
+        for position in test_positions() {
+            let state = SearchState::new(&position);
+            state.validate(&position);
         }
     }
 
-    // TODO check invariants for new() explcitly
+    #[test]
+    fn test_search_state_invariants_pass() {
+        for mut position in test_positions() {
+            let mut state = SearchState::new(&position);
+            state.validate(&position);
 
-    // TODO check for all other functions that `SearchState::new(state.position)` is consistent with `state`
+            state.update_pass_midgame();
+            position.pass();
+            state.validate(&position);
+
+            state.restore_pass_midgame();
+            position.pass();
+            state.validate(&position);
+        }
+    }
+
+    #[test]
+    fn test_search_state_invariants_eval_1() {
+        for position in test_positions() {
+            if position.count_empty() <= 1 {
+                // Prevent index out of bounds in Eval.
+                continue;
+            }
+
+            let mut state = SearchState::new(&position);
+            state.validate(&position);
+
+            state.eval_1(3, 6);
+            state.validate(&position);
+        }
+    }
+
+    #[test]
+    fn test_search_state_invariants_eval_2() {
+        for position in test_positions() {
+            if position.count_empty() <= 2 {
+                // Prevent index out of bounds in Eval.
+                continue;
+            }
+
+            let mut state = SearchState::new(&position);
+            state.validate(&position);
+
+            state.eval_2(3, 6);
+            state.validate(&position);
+        }
+    }
+
+    #[test]
+    fn test_search_state_invariants_move_midgame() {
+        for mut position in test_positions() {
+            let mut state = SearchState::new(&position);
+            state.validate(&position);
+
+            for move_ in SearchState::get_movelist(&position).iter() {
+                let index = move_.x as usize;
+
+                state.update_midgame(&move_);
+                let flipped = position.do_move(index);
+                state.validate(&position);
+
+                state.restore_midgame(&move_);
+                position.undo_move(index, flipped);
+                state.validate(&position);
+            }
+        }
+    }
+
+    #[test]
+    fn test_search_state_invariants_sort_move_list() {
+        for position in test_positions() {
+            let mut state = SearchState::new(&position);
+            state.validate(&position);
+
+            state.sort_move_list();
+            state.validate(&position);
+        }
+    }
+
+    #[test]
+    fn test_search_state_invariants_set_best_move_score() {
+        for position in test_positions() {
+            if !position.has_moves() {
+                continue; // Can't set score if there are no moves.
+            }
+
+            let mut state = SearchState::new(&position);
+            state.validate(&position);
+
+            state.set_best_move_score(10);
+            state.validate(&position);
+        }
+    }
+
+    #[test]
+    fn test_search_state_invariants_set_pv_extension() {
+        for position in test_positions() {
+            let mut state = SearchState::new(&position);
+            state.validate(&position);
+
+            state.set_pv_extension(10);
+            state.validate(&position);
+        }
+    }
+
+    #[test]
+    fn test_search_state_invariants_randomize_move_list_score() {
+        for position in test_positions() {
+            let mut state = SearchState::new(&position);
+            state.validate(&position);
+
+            state.randomize_move_list_score();
+            state.validate(&position);
+        }
+    }
+
+    #[test]
+    fn test_search_state_invariants_move_list_mut_changing_scores() {
+        // This test does not PROVE that the invariants are maintained,
+        // however this is one of the ways move_list_mut() is intended to be used.
+
+        for position in test_positions() {
+            let mut state = SearchState::new(&position);
+            state.validate(&position);
+
+            for move_ in state.move_list_mut().iter_mut() {
+                move_.score = rand::thread_rng().gen::<i32>() & 0x7fffffff;
+            }
+
+            state.validate(&position);
+        }
+    }
+
+    #[test]
+    fn test_search_state_get_movelist() {
+        for position in test_positions() {
+            let movelist = SearchState::get_movelist(&position);
+
+            let move_indeces = position.iter_move_indices().collect::<HashSet<_>>();
+            let movelist_indeces = movelist
+                .iter()
+                .map(|m| m.x as usize)
+                .collect::<HashSet<_>>();
+
+            // Check that the move list contains all and only the legal moves.
+            assert_eq!(move_indeces, movelist_indeces);
+
+            for move_ in movelist.iter() {
+                assert_eq!(move_.flipped, position.get_flipped(move_.x as usize));
+                assert_eq!(move_.x, move_.x as usize as i32);
+                assert_eq!(move_.score, 0);
+                assert_eq!(move_.cost, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn test_search_bound() {
+        let mut state = SearchState::new(&Position::new());
+        state.stability_bound = Bound { lower: 2, upper: 5 };
+
+        assert_eq!(state.bound(0), 2);
+        assert_eq!(state.bound(2), 2);
+        assert_eq!(state.bound(3), 3);
+        assert_eq!(state.bound(5), 5);
+        assert_eq!(state.bound(7), 5);
+    }
+
+    #[test]
+    fn test_eval_0() {
+        for position in test_positions() {
+            let state = SearchState::new(&position);
+            assert_eq!(state.eval_0(), state.eval.heuristic());
+        }
+    }
+
+    impl SearchState {
+        fn eval_1_naive(&mut self, alpha: i32, mut beta: i32) -> i32 {
+            let moves = self.position.get_moves();
+
+            if moves == 0 {
+                if self.position.opponent_has_moves() {
+                    self.update_pass_midgame();
+                    let score = -self.eval_1_naive(beta, alpha);
+                    self.restore_pass_midgame();
+                    return score;
+                } else {
+                    return self.solve();
+                }
+            } else {
+                let mut bestscore = -SCORE_INF;
+                if beta >= SCORE_MAX {
+                    beta = SCORE_MAX - 1;
+                }
+
+                for empty in self.empties.clone().iter() {
+                    if moves & empty.b != 0 {
+                        let flipped = self.position.get_flipped(empty.x as usize);
+
+                        if flipped == self.position.opponent {
+                            return SCORE_MAX;
+                        }
+
+                        let move_ = Move::new(&self.position, empty.x);
+                        self.update_midgame(&move_);
+                        let score = -self.eval_0();
+                        self.restore_midgame(&move_);
+
+                        if score > bestscore {
+                            bestscore = score;
+                            if bestscore >= beta {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if bestscore <= SCORE_MIN {
+                    bestscore = SCORE_MIN + 1;
+                } else if bestscore >= SCORE_MAX {
+                    bestscore = SCORE_MAX - 1;
+                }
+
+                return bestscore;
+            }
+        }
+
+        fn eval_2_naive(&mut self, mut alpha: i32, beta: i32) -> i32 {
+            let moves = self.position.get_moves();
+
+            if moves == 0 {
+                if self.position.opponent_has_moves() {
+                    self.update_pass_midgame();
+                    let score = -self.eval_2_naive(-beta, -alpha);
+                    self.restore_pass_midgame();
+                    return score;
+                } else {
+                    return self.solve();
+                }
+            } else {
+                let mut bestscore = -SCORE_INF;
+
+                for empty in self.empties.clone().iter() {
+                    if moves & empty.b != 0 {
+                        let flipped = self.position.get_flipped(empty.x as usize);
+
+                        if flipped == self.position.opponent {
+                            return SCORE_MAX;
+                        }
+
+                        let move_ = Move::new(&self.position, empty.x);
+                        self.update_midgame(&move_);
+                        let score = -self.eval_1(-beta, -alpha);
+                        self.restore_midgame(&move_);
+
+                        if score > bestscore {
+                            bestscore = score;
+                            if bestscore >= beta {
+                                break;
+                            } else if bestscore > alpha {
+                                alpha = bestscore;
+                            }
+                        }
+                    }
+                }
+
+                if bestscore <= SCORE_MIN {
+                    bestscore = SCORE_MIN + 1;
+                } else if bestscore >= SCORE_MAX {
+                    bestscore = SCORE_MAX - 1;
+                }
+
+                return bestscore;
+            }
+        }
+    }
+
+    #[test]
+    fn test_eval_1_naive() {
+        let bounds = [
+            (SCORE_MIN, SCORE_MAX),
+            (SCORE_MIN, 0),
+            (0, SCORE_MAX),
+            (-10, 10),
+        ];
+
+        for position in test_positions() {
+            if position.count_empty() <= 1 {
+                continue; // Prevent index out of bounds in Eval.
+            }
+
+            for (alpha, beta) in bounds {
+                let mut state = SearchState::new(&position);
+
+                assert_eq!(state.eval_1(alpha, beta), state.eval_1_naive(alpha, beta));
+            }
+        }
+    }
+
+    #[test]
+    fn test_eval_2_naive() {
+        let bounds = [
+            (SCORE_MIN, SCORE_MAX),
+            (SCORE_MIN, 0),
+            (0, SCORE_MAX),
+            (-10, 10),
+        ];
+
+        for position in test_positions() {
+            if position.count_empty() <= 2 {
+                continue; // Prevent index out of bounds in Eval.
+            }
+
+            for (alpha, beta) in bounds {
+                let mut state = SearchState::new(&position);
+                assert_eq!(state.eval_2(alpha, beta), state.eval_2_naive(alpha, beta));
+            }
+        }
+    }
+
+    #[test]
+    fn test_solve() {
+        for position in test_positions() {
+            let state = SearchState::new(&position);
+            assert_eq!(
+                state.solve(),
+                position.final_score_with_empty(state.n_empties)
+            );
+            assert_eq!(state.solve(), position.final_score() as i32);
+        }
+    }
+
+    #[test]
+    fn test_set_best_move_score() {
+        for position in test_positions() {
+            if !position.has_moves() {
+                continue; // Can't set score if there are no moves.
+            }
+
+            let mut state = SearchState::new(&position);
+            state.set_best_move_score(10);
+            assert_eq!(state.get_best_move().score, 10);
+        }
+    }
+
+    #[test]
+    fn test_get_best_move() {
+        for position in test_positions() {
+            if !position.has_moves() {
+                continue; // Can't get best move if there are no moves.
+            }
+
+            let mut state = SearchState::new(&position);
+
+            // This proves it works because the score is 0 for all moves initially.
+            state.set_best_move_score(10);
+            assert_eq!(state.get_best_move().score, 10);
+        }
+    }
+
+    #[test]
+    fn test_randomize_move_list_score() {
+        for position in test_positions() {
+            let mut state = SearchState::new(&position);
+
+            // Test that no moves are added or removed.
+            let before = state.move_list.iter().map(|m| m.x).collect::<Vec<_>>();
+            state.randomize_move_list_score();
+            let after = state.move_list.iter().map(|m| m.x).collect::<Vec<_>>();
+
+            assert_eq!(before, after);
+        }
+    }
 }

@@ -1,8 +1,7 @@
 #![allow(dead_code)] // TODO
 
-use rand::Rng;
 use std::sync::atomic::{AtomicI64, AtomicU64, AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::bot::edax::r#const::{
@@ -17,7 +16,7 @@ use crate::{
     othello::{position::Position, squares::*},
 };
 
-use super::r#const::{NodeType, SORT_ALPHA_DELTA};
+use super::r#const::SORT_ALPHA_DELTA;
 use super::r#const::{Stop, LEVEL};
 use super::r#move::{Move, MOVE_PASS};
 use super::search_state::SearchState;
@@ -279,28 +278,22 @@ impl Search {
         }
 
         {
-            let mut state = self.state.lock().unwrap();
-            state.height = 0;
-            state.node_type[0] = NodeType::PvNode;
-            state.depth_pv_extension = state.get_pv_extension(0);
-            state.stability_bound.upper =
-                SCORE_MAX - 2 * state.position.count_opponent_stable_discs();
-            state.stability_bound.lower =
-                2 * state.position.count_player_stable_discs() - SCORE_MAX;
+            let state = self.state.lock().unwrap();
+            let movelist = state.move_list();
 
             let mut result = self.result.lock().unwrap();
             result.score = state.bound(state.eval_0());
-            result.n_moves_left = state.movelist.len();
-            result.n_moves = state.movelist.len() as i32;
+            result.n_moves_left = movelist.len();
+            result.n_moves = movelist.len() as i32;
             result.book_move = false;
 
-            if state.movelist.is_empty() {
+            if movelist.is_empty() {
                 result.bound[PASS] = Bound {
                     lower: SCORE_MIN,
                     upper: SCORE_MAX,
                 };
             } else {
-                for move_ in state.movelist.iter() {
+                for move_ in movelist.iter() {
                     result.bound[move_.x as usize] = Bound {
                         lower: SCORE_MIN,
                         upper: SCORE_MAX,
@@ -334,7 +327,7 @@ impl Search {
     ///
     /// Like get_last_level() in Edax
     fn get_last_level(&self) -> Option<(i32, i32)> {
-        let mut position = self.state.lock().unwrap().position;
+        let mut position = *self.state.lock().unwrap().position();
 
         let mut depth: i32 = -1;
         let mut selectivity: i32 = -1;
@@ -423,14 +416,12 @@ impl Search {
                 if result.score < beta {
                     bound.upper = result.score;
                 } else {
-                    let state = self.state.lock().unwrap();
-                    bound.upper = state.stability_bound.upper;
+                    bound.upper = self.state.lock().unwrap().stability_bound().upper;
                 }
                 if result.score > alpha {
                     bound.lower = result.score;
                 } else {
-                    let state = self.state.lock().unwrap();
-                    bound.lower = state.stability_bound.lower;
+                    bound.upper = self.state.lock().unwrap().stability_bound().lower;
                 }
             }
 
@@ -515,22 +506,33 @@ impl Search {
         alpha: i32,
         _beta: i32, // TODO this is unused ?!?
     ) {
-        let state = self.state.lock().unwrap();
+        // TODO add test that checks:
+        // - the score may change
+        // - the order of moves may change
+        // - nothing else changes
+        // - in particular, no moves are added or removed
+
+        // TODO consider sending guard as argument
+        let mut state = self.state.lock().unwrap();
+
+        let position = *state.position();
+        let n_empties = state.n_empties();
+
         let config = self.config.read().unwrap();
 
         let mut min_depth = 9;
-        if state.n_empties <= 27 {
-            min_depth += (30 - state.n_empties) / 3;
+        if n_empties <= 27 {
+            min_depth += (30 - n_empties) / 3;
         }
 
         let sort_depth = if config.depth >= min_depth {
             let mut sort_depth = (config.depth - 15) / 3;
-            if let Some(hash_data) = self.pv_table.get(&state.position) {
+            if let Some(hash_data) = self.pv_table.get(&position) {
                 if (hash_data.upper as i32) < alpha {
                     sort_depth -= 2;
                 }
             }
-            if state.n_empties >= 27 {
+            if n_empties >= 27 {
                 sort_depth += 1;
             }
 
@@ -541,7 +543,7 @@ impl Search {
 
         let sort_alpha = SCORE_MIN.max(alpha - SORT_ALPHA_DELTA);
         for move_ in movelist.iter_mut() {
-            self.evaluate_move(move_, hash_data, sort_alpha, sort_depth);
+            self.evaluate_move(&mut state, move_, hash_data, sort_alpha, sort_depth);
         }
     }
 
@@ -551,6 +553,7 @@ impl Search {
     /// Like move_evaluate() in Edax
     fn evaluate_move(
         self: &Arc<Self>,
+        state: &mut MutexGuard<'_, SearchState>,
         move_: &mut Move,
         hash_data: &HashData,
         sort_alpha: i32,
@@ -566,9 +569,7 @@ impl Search {
         const WEIGHT_MID_PARITY: i32 = 1 << 2;
         const WEIGHT_HIGH_PARITY: i32 = 1 << 1;
 
-        let mut state = self.state.lock().unwrap();
-
-        if move_.is_wipeout(&state.position) {
+        if move_.is_wipeout(state.position()) {
             move_.score = 1 << 30;
         } else if move_.x == hash_data.move_[0] as i32 {
             move_.score = 1 << 29;
@@ -576,24 +577,30 @@ impl Search {
             move_.score = 1 << 28;
         } else {
             move_.score = SQUARE_VALUE[move_.x as usize];
-            if state.n_empties < 12 && (state.parity & QUADRANT_ID[move_.x as usize]) != 0 {
+            if state.n_empties() < 12 && (state.parity() & QUADRANT_ID[move_.x as usize]) != 0 {
                 move_.score += WEIGHT_LOW_PARITY;
-            } else if state.n_empties < 21 && (state.parity & QUADRANT_ID[move_.x as usize]) != 0 {
+            } else if state.n_empties() < 21
+                && (state.parity() & QUADRANT_ID[move_.x as usize]) != 0
+            {
                 move_.score += WEIGHT_MID_PARITY;
-            } else if state.n_empties < 30 && (state.parity & QUADRANT_ID[move_.x as usize]) != 0 {
+            } else if state.n_empties() < 30
+                && (state.parity() & QUADRANT_ID[move_.x as usize]) != 0
+            {
                 move_.score += WEIGHT_HIGH_PARITY;
             }
 
             if sort_depth < 0 {
                 // TODO #15 Optimize: use flipped discs from `move_` for doing and undoing move
-                let flipped = state.position.do_move(move_.x as usize);
+                // TODO #15 Edax uses `state.position` here directly, we use a local copy for maximum correctness guarantee
 
-                move_.score +=
-                    (36 - state.position.potential_mobility()) * WEIGHT_POTENTIAL_MOBILITY;
-                move_.score += state.position.opponent_corner_stability() * WEIGHT_CORNER_STABILITY;
-                move_.score += (36 - state.position.weighted_mobility()) * WEIGHT_MOBILITY;
+                let mut position = *state.position();
+                position.do_move(move_.x as usize);
 
-                state.position.undo_move(move_.x as usize, flipped);
+                move_.score += (36 - position.potential_mobility()) * WEIGHT_POTENTIAL_MOBILITY;
+                move_.score += position.opponent_corner_stability() * WEIGHT_CORNER_STABILITY;
+                move_.score += (36 - position.weighted_mobility()) * WEIGHT_MOBILITY;
+
+                // TODO #15 If we stop using the local copy, undo move here.
             } else {
                 let mut config = self.config.write().unwrap();
                 let selectivity = config.selectivity;
@@ -602,9 +609,9 @@ impl Search {
 
                 state.update_midgame(move_);
                 move_.score +=
-                    (36 - state.position.potential_mobility()) * WEIGHT_POTENTIAL_MOBILITY; // potential mobility
-                move_.score += state.position.opponent_edge_stability() * WEIGHT_EDGE_STABILITY; // edge stability
-                move_.score += (36 - state.position.weighted_mobility()) * WEIGHT_MOBILITY; // real mobility
+                    (36 - state.position().potential_mobility()) * WEIGHT_POTENTIAL_MOBILITY; // potential mobility
+                move_.score += state.position().opponent_edge_stability() * WEIGHT_EDGE_STABILITY; // edge stability
+                move_.score += (36 - state.position().weighted_mobility()) * WEIGHT_MOBILITY; // real mobility
 
                 move_.score += match sort_depth {
                     0 => ((SCORE_MAX - state.eval_0()) >> 2) * WEIGHT_EVAL,
@@ -615,7 +622,7 @@ impl Search {
                             - self.pvs_shallow(SCORE_MIN, -sort_alpha, sort_depth))
                             * WEIGHT_EVAL;
 
-                        if self.hash_table.get(&state.position).is_some() {
+                        if self.hash_table.get(state.position()).is_some() {
                             score += WEIGHT_HASH;
                         }
 
@@ -643,13 +650,13 @@ impl Search {
             return score;
         }
 
-        let mut movelist = SearchState::get_movelist(&state.position);
+        let mut movelist = SearchState::get_movelist(state.position());
 
         let mut bestmove;
         let mut bestscore;
 
         if movelist.is_empty() {
-            if state.position.opponent_has_moves() {
+            if state.position().opponent_has_moves() {
                 state.update_pass_midgame();
                 bestscore = -self.pvs_shallow(-beta, -alpha, depth);
                 bestmove = PASS;
@@ -658,7 +665,7 @@ impl Search {
                 bestmove = NO_MOVE;
             }
         } else {
-            let hash_data = self.shallow_table.get_or_default(&state.position);
+            let hash_data = self.shallow_table.get_or_default(state.position());
 
             self.evaluate_movelist(&mut movelist, &hash_data, alpha, beta);
             movelist.sort();
@@ -699,7 +706,7 @@ impl Search {
         cost += self.n_nodes.load(Ordering::Relaxed) as i64;
 
         self.shallow_table.store(&StoreArgs {
-            position: &state.position,
+            position: state.position(),
             depth,
             selectivity: self.config.read().unwrap().selectivity,
             cost: cost.ilog2() as i32,
@@ -740,7 +747,7 @@ impl Search {
             return score;
         }
 
-        let hash_data = table.get(&state.position);
+        let hash_data = table.get(state.position());
 
         if let Some(ref hash_data) = hash_data {
             if let Some(score) =
@@ -752,13 +759,13 @@ impl Search {
 
         let hash_data = hash_data.unwrap_or_default();
 
-        let mut movelist = SearchState::get_movelist(&state.position);
+        let mut movelist = SearchState::get_movelist(state.position());
 
         let mut bestscore;
         let mut bestmove;
 
         if movelist.is_empty() {
-            if state.position.opponent_has_moves() {
+            if state.position().opponent_has_moves() {
                 state.update_pass_midgame();
                 bestscore = -self.nws_shallow(beta, depth - 1, table);
                 bestmove = PASS;
@@ -793,7 +800,7 @@ impl Search {
         cost += self.n_nodes.load(Ordering::Relaxed) as i64;
 
         let store_args = StoreArgs {
-            position: &state.position,
+            position: state.position(),
             depth,
             selectivity,
             cost: cost.ilog2() as i32,
@@ -845,13 +852,14 @@ impl Search {
         result.n_nodes = 0;
         result.pv = Line::new(self.player);
 
+        // TODO reduce scope of lock
         let mut state = self.state.lock().unwrap();
 
         // Game is over
-        if state.movelist.is_empty() && !state.position.opponent_has_moves() {
+        if state.move_list().is_empty() && !state.position().opponent_has_moves() {
             result.move_ = NO_MOVE;
             result.score = state.solve();
-            result.depth = state.n_empties;
+            result.depth = state.n_empties();
             result.selectivity = NO_SELECTIVITY;
             result.time = self.time.spent.load(Ordering::Relaxed);
             result.n_nodes = self.count_nodes();
@@ -867,10 +875,10 @@ impl Search {
 
         let mut score = state.bound(state.eval_0());
         let mut end = options_depth;
-        if end >= state.n_empties {
-            end = state.n_empties - ITERATIVE_MIN_EMPTIES + 2;
+        if end >= state.n_empties() {
+            end = state.n_empties() - ITERATIVE_MIN_EMPTIES + 2;
             if end <= 0 {
-                end = 2 - (state.n_empties & 1);
+                end = 2 - (state.n_empties() & 1);
             }
         }
         let mut start = 6 - (end & 1);
@@ -893,7 +901,7 @@ impl Search {
         // Release mutex, we don't need it anymore
         drop(result);
 
-        if let Some(hash_data) = self.pv_table.get(&state.position) {
+        if let Some(hash_data) = self.pv_table.get(state.position()) {
             old_depth = hash_data.depth as i32;
             old_selectivity = hash_data.selectivity as i32;
 
@@ -916,9 +924,9 @@ impl Search {
             config.options.depth = config.options.depth.min(options_depth);
         }
 
-        start = start.min(state.n_empties);
+        start = start.min(state.n_empties());
 
-        if start < state.n_empties {
+        if start < state.n_empties() {
             if (start & 1) != (end & 1) {
                 start += 1;
             }
@@ -930,40 +938,29 @@ impl Search {
             }
         }
 
-        if state.movelist.is_empty() {
+        if state.move_list().is_empty() {
             let mut bestmove = MOVE_PASS;
             bestmove.score = score;
 
             // Create local copy to avoid borrowing issues
-            let position = state.position;
+            let position = *state.position();
             self.record_best_move(&position, &bestmove, alpha, beta, old_depth);
         } else {
             if end == 0 {
                 // shuffle the movelist
-                for move_ in state.movelist.iter_mut() {
-                    move_.score = rand::thread_rng().gen::<i32>() & 0x7fffffff;
-                }
+                state.randomize_move_list_score();
             } else {
-                // Clone movelist to avoid borrowing issues
-                let mut movelist = state.movelist.clone();
-
                 // Get hash data from pv_table
-                let hash_data = self.pv_table.get_or_default(&state.position);
+                let hash_data = self.pv_table.get_or_default(state.position());
 
                 // Set `score` for all moves in movelist
-                self.evaluate_movelist(&mut movelist, &hash_data, alpha, start);
-
-                // Replace updated movelist
-                state.movelist = movelist;
+                self.evaluate_movelist(state.move_list_mut(), &hash_data, alpha, start);
             }
-            state.movelist.sort();
+            state.sort_move_list();
 
-            // Create local copy to avoid borrowing issues
-            let mut bestmove = *state.movelist.first().unwrap();
-            bestmove.score = score;
-
-            let position = state.position;
-            self.record_best_move(&position, &bestmove, alpha, beta, old_depth);
+            state.set_best_move_score(score);
+            let bestmove = state.get_best_move();
+            self.record_best_move(state.position(), bestmove, alpha, beta, old_depth);
         }
 
         self.config.write().unwrap().selectivity = old_selectivity;
@@ -976,7 +973,7 @@ impl Search {
         // midgame: iterative depth
         let mut depth = start;
         while depth < end {
-            state.depth_pv_extension = state.get_pv_extension(depth);
+            state.set_pv_extension(depth);
             score = self.aspiration_search(alpha, beta, depth, score);
 
             if !self.continue_search() {
@@ -985,7 +982,7 @@ impl Search {
 
             if score.abs() >= SCORE_MAX - 1
                 && depth > end - ITERATIVE_MIN_EMPTIES
-                && self.config.read().unwrap().options.depth >= state.n_empties
+                && self.config.read().unwrap().options.depth >= state.n_empties()
             {
                 break;
             }
@@ -995,8 +992,8 @@ impl Search {
         self.config.write().unwrap().depth = end;
 
         // Switch to endgame
-        if self.config.read().unwrap().options.depth >= state.n_empties {
-            self.config.write().unwrap().depth = state.n_empties;
+        if self.config.read().unwrap().options.depth >= state.n_empties() {
+            self.config.write().unwrap().depth = state.n_empties();
         }
 
         // iterative selectivity
@@ -1013,7 +1010,7 @@ impl Search {
             }
 
             // Check if we should jump to exact endgame for faster solving
-            if config.depth == state.n_empties
+            if config.depth == state.n_empties()
                 && ((config.depth < 21 && config.selectivity >= 1)
                     || (config.depth < 24 && config.selectivity >= 2)
                     || (config.depth < 27 && config.selectivity >= 3)
@@ -1062,7 +1059,7 @@ impl Search {
     ) -> i32 {
         let state = self.state.lock().unwrap();
 
-        if Self::is_depth_solving(depth, state.n_empties) {
+        if Self::is_depth_solving(depth, state.n_empties()) {
             if alpha & 1 != 0 {
                 alpha -= 1;
             }
@@ -1078,8 +1075,8 @@ impl Search {
             beta = SCORE_MAX;
         }
 
-        let mut high = SCORE_MAX.min(state.stability_bound.upper + 2);
-        let mut low = SCORE_MIN.max(state.stability_bound.lower - 2);
+        let mut high = SCORE_MAX.min(state.stability_bound().upper + 2);
+        let mut low = SCORE_MIN.max(state.stability_bound().lower - 2);
 
         alpha = alpha.max(low);
         beta = beta.min(high);
@@ -1088,7 +1085,7 @@ impl Search {
 
         let mut result = self.result.lock().unwrap();
 
-        for move_ in state.movelist.iter() {
+        for move_ in state.move_list().iter() {
             result.bound[move_.x as usize] = Bound {
                 lower: low,
                 upper: high,
@@ -1101,7 +1098,7 @@ impl Search {
             let mut width = 10 - depth;
             width = width.min(1);
 
-            if width & 1 != 0 && depth == state.n_empties {
+            if width & 1 != 0 && depth == state.n_empties() {
                 width += 1;
             }
 
@@ -1157,7 +1154,7 @@ impl Search {
                     break;
                 }
 
-                if Self::is_depth_solving(depth, state.n_empties)
+                if Self::is_depth_solving(depth, state.n_empties())
                     && ((alpha < score && score < beta)
                         || (score == alpha && score == SCORE_MIN)
                         || (score == beta && score == SCORE_MAX))
@@ -1166,7 +1163,7 @@ impl Search {
                     break;
                 }
 
-                if Self::is_depth_solving(depth, state.n_empties) && (score & 1) != 0 {
+                if Self::is_depth_solving(depth, state.n_empties()) && (score & 1) != 0 {
                     break;
                 }
 
@@ -1179,10 +1176,8 @@ impl Search {
         if self.stop.load(Ordering::Relaxed) != Stop::Running as u8 {
             // TODO #15: Refactor to avoid cloning
             // Make local copies to avoid borrowing issues
-            let position = state.position;
-            let bestmove = *state.movelist.first().unwrap();
-
-            self.record_best_move(&position, &bestmove, alpha, beta, depth);
+            let bestmove = state.move_list().first().unwrap();
+            self.record_best_move(state.position(), bestmove, alpha, beta, depth);
         }
 
         // TODO #14: update search time
@@ -1203,7 +1198,7 @@ impl Search {
 
     /// Like is_pv_ok() in Edax
     fn is_pv_ok(self: &Arc<Self>, bestmove: i32, mut depth: i32) -> bool {
-        let mut position = self.state.lock().unwrap().position;
+        let mut position = *self.state.lock().unwrap().position();
         let selectivity = self.config.read().unwrap().selectivity;
 
         let mut x = bestmove;

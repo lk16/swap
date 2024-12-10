@@ -194,6 +194,11 @@ impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
         self.head.map(|node| unsafe { &(*node.as_ptr()).data })
     }
 
+    pub fn first_mut(&mut self) -> Option<&mut T> {
+        // TODO add tests for this
+        self.head.map(|node| unsafe { &mut (*node.as_ptr()).data })
+    }
+
     unsafe fn merge_sort(head: NonNull<Node<T>>) -> NonNull<Node<T>> {
         // List has only one node
         if (*head.as_ptr()).next.is_none() {

@@ -353,7 +353,7 @@ pub mod tests {
 
     impl Eval {
         /// Create a new eval for the opponent's perspective
-        fn new_for_opponent(position: &Position) -> Self {
+        pub fn new_for_opponent(position: &Position) -> Self {
             // Pass position
             let mut passed = *position;
             passed.pass();
