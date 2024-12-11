@@ -504,7 +504,7 @@ impl Search {
         movelist: &mut ForwardPoolList<Move, 64>,
         hash_data: &HashData,
         alpha: i32,
-        _beta: i32, // TODO this is unused ?!?
+        depth: i32,
     ) {
         // TODO add test that checks:
         // - the score may change
@@ -518,15 +518,13 @@ impl Search {
         let position = *state.position();
         let n_empties = state.n_empties();
 
-        let config = self.config.read().unwrap();
-
         let mut min_depth = 9;
         if n_empties <= 27 {
             min_depth += (30 - n_empties) / 3;
         }
 
-        let sort_depth = if config.depth >= min_depth {
-            let mut sort_depth = (config.depth - 15) / 3;
+        let sort_depth = if depth >= min_depth {
+            let mut sort_depth = (depth - 15) / 3;
             if let Some(hash_data) = self.pv_table.get(&position) {
                 if (hash_data.upper as i32) < alpha {
                     sort_depth -= 2;
@@ -636,7 +634,7 @@ impl Search {
         }
     }
 
-    /// Like pvs_shallow() in Edax
+    /// Like PVS_shallow() in Edax
     fn pvs_shallow(self: &Arc<Self>, alpha: i32, mut beta: i32, depth: i32) -> i32 {
         let mut cost = -(self.n_nodes.load(Ordering::Relaxed) as i64);
 
@@ -667,7 +665,7 @@ impl Search {
         } else {
             let hash_data = self.shallow_table.get_or_default(state.position());
 
-            self.evaluate_movelist(&mut movelist, &hash_data, alpha, beta);
+            self.evaluate_movelist(&mut movelist, &hash_data, alpha, depth);
             movelist.sort();
 
             bestscore = -SCORE_INF;
@@ -775,7 +773,7 @@ impl Search {
                 bestmove = NO_MOVE;
             }
         } else {
-            self.evaluate_movelist(&mut movelist, &hash_data, alpha, beta);
+            self.evaluate_movelist(&mut movelist, &hash_data, alpha, depth);
             movelist.sort();
 
             bestscore = -SCORE_INF;
