@@ -678,7 +678,7 @@ impl Search {
                 let score = if bestscore == -SCORE_INF {
                     -self.pvs_shallow(-beta, -lower, depth - 1)
                 } else {
-                    let mut score = -self.nws_shallow_with_shallow_table(-lower - 1, depth - 1);
+                    let mut score = -self.nws_shallow(-lower - 1, depth - 1, &self.shallow_table);
                     if alpha < score && score < beta {
                         score = -self.pvs_shallow(-beta, -lower, depth - 1);
                     }
@@ -717,18 +717,7 @@ impl Search {
         bestscore
     }
 
-    /// Like nws_shallow() in Edax, but using self.shallow_table
-    fn nws_shallow_with_shallow_table(self: &Arc<Self>, alpha: i32, depth: i32) -> i32 {
-        // TODO inline this
-        self.nws_shallow(alpha, depth, &self.shallow_table)
-    }
-
-    /// Like nws_shallow() in Edax, but using self.hash_table
-    fn nws_shallow_with_hash_table(self: &Arc<Self>, alpha: i32, depth: i32) -> i32 {
-        // TODO inline this
-        self.nws_shallow(alpha, depth, &self.hash_table)
-    }
-
+    /// Like NWS_shallow() in Edax
     fn nws_shallow(self: &Arc<Self>, alpha: i32, depth: i32, table: &HashTable) -> i32 {
         let selectivity = self.config.read().unwrap().selectivity;
 
