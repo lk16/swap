@@ -101,21 +101,12 @@ impl SearchState {
 
     /// Like search_get_movelist() in Edax
     pub fn get_movelist(position: &Position) -> ForwardPoolList<Move, 64> {
-        let mut movelist = ForwardPoolList::new();
+        let moves = position.iter_move_indices();
 
-        // TODO #15 further optimization: can we use from_iter() to build the list faster?
-        for x in position.iter_move_indices() {
-            let move_ = Move {
-                cost: 0,
-                flipped: position.get_flipped(x),
-                x: x as i32,
-                score: 0,
-            };
+        // We know that the lower_bound on size_hint() is giving exact size for MoveIndices
+        let size = moves.size_hint().0;
 
-            movelist.push(move_);
-        }
-
-        movelist
+        ForwardPoolList::from_iter_with_size(moves.map(|x| Move::new(position, x as i32)), size)
     }
 
     /// Like get_pv_extension() in Edax

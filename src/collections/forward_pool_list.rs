@@ -12,21 +12,20 @@ struct Node<T> {
 /// A fixed-capacity singly-linked list backed by a pre-allocated vector.
 ///
 /// Similar to PoolList, but maintains only forward links, making it more memory
-/// efficient but without the ability to restore nodes in arbitrary order.
+/// efficient. The list is initialized from an iterator and supports operations
+/// like sorting and iteration.
 ///
 /// # Capacity
 /// The list has a fixed capacity `N` specified at compile time. It will not resize,
-/// and attempting to push more items than the capacity will panic.
+/// and attempting to initialize with more items than the capacity will panic.
 pub struct ForwardPoolList<T: Default + PartialOrd, const N: usize> {
+    // Underlying vector of nodes
     nodes: Vec<Node<T>>,
 
-    // Head of main list
+    // Head of the list
     head: Option<NonNull<Node<T>>>,
 
-    // Head of free list
-    free: Option<NonNull<Node<T>>>,
-
-    // Number of items in the main list
+    // Number of items in the list
     length: usize,
 }
 
@@ -60,76 +59,90 @@ where
                 NonNull::new_unchecked(base_ptr.add(offset))
             });
 
-            // Update free list pointer
-            let free = self.free.map(|ptr| {
-                let offset = ptr.as_ptr().offset_from(self.nodes.as_ptr()) as usize;
-                NonNull::new_unchecked(base_ptr.add(offset))
-            });
-
             Self {
                 nodes,
                 head,
-                free,
                 length: self.length,
             }
         }
     }
 }
 
-impl<T: Default + PartialOrd, const N: usize> Default for ForwardPoolList<T, N> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
-    pub fn new() -> Self {
-        // SAFETY: This implementation is safe because:
-        // 1. All pointers are derived from nodes Vec, which lives as long as ForwardPoolList
-        // 2. The Vec is never resized or moved after creation
-        // 3. Node indices are always within bounds [0..N)
-        let mut nodes: Vec<Node<T>> = Vec::from_iter((0..N).map(|_| Node::default()));
+    /// Creates a new `ForwardPoolList` from an iterator with a known size.
+    ///
+    /// This is the primary way to construct a `ForwardPoolList`. The list will be initialized
+    /// with the elements from the iterator in the order they appear.
+    ///
+    /// # Arguments
+    /// * `iter` - An iterator that yields the elements to store in the list
+    /// * `size` - The exact number of elements that will be taken from the iterator
+    ///
+    /// # Panics
+    /// * If `size` exceeds the list's capacity `N`
+    /// * If the iterator yields fewer elements than specified by `size`
+    pub fn from_iter_with_size<I: IntoIterator<Item = T>>(iter: I, size: usize) -> Self {
+        // TODO remove N and just allocate the vector with the size
 
+        // TODO #15 further optimization: size should never be too large, but this check may be slow.
+        assert!(size <= N, "Iterator size exceeds list capacity");
+
+        // TODO #15 further optimization: size should never be zero, but the check for it may be slow.
+        if size == 0 {
+            return Self {
+                nodes: Vec::new(),
+                head: None,
+                length: 0,
+            };
+        }
+
+        let mut iter = iter.into_iter();
+
+        // TODO #15 further optimization: find out if the allocation itself is the bottleneck.
+        // If so, consider allocating on the stack with a fixed size.
+
+        // Allocate the vector with the correct capacity
+        let mut nodes: Vec<Node<T>> = Vec::with_capacity(N);
+
+        // SAFETY: The following unsafe block maintains these invariants:
+        // 1. All pointers are derived from nodes.as_mut_ptr() which is valid for the lifetime of nodes
+        // 2. The vector is never resized after creation
+        // 3. Each node points to a valid next node within the allocated memory
+        // 4. The last node's next pointer is set to None
+        // 5. All pointer arithmetic is bounds-checked via the size parameter
+        // 6. We initialize all nodes up to 'size' with valid data
+        // 7. The remaining nodes (size..N) remain uninitialized but are never accessed
+
+        #[allow(clippy::uninit_vec)]
         unsafe {
-            // Get pointer to first free node
-            let free = NonNull::new_unchecked(nodes.as_mut_ptr());
+            nodes.set_len(N);
 
-            // Setup list of free nodes
-            for i in 0..N - 1 {
-                let node = free.as_ptr().add(i);
-                (*node).next = Some(NonNull::new_unchecked(free.as_ptr().add(i + 1)));
+            let base = NonNull::new_unchecked(nodes.as_mut_ptr());
+
+            // Setup main list
+            for i in 0..size {
+                let node_ptr = base.as_ptr().add(i);
+
+                let node = Node {
+                    data: iter.next().unwrap(),
+                    next: Some(NonNull::new_unchecked(node_ptr.add(1))),
+                };
+
+                // Write directly to memory
+                std::ptr::write(node_ptr, node);
             }
 
-            // Setup free list end
-            (*free.as_ptr().add(N - 1)).next = None;
+            let last_node = base.as_ptr().add(size - 1);
+            (*last_node).next = None;
+
+            // Setup head
+            let head = Some(NonNull::new_unchecked(base.as_ptr()));
 
             Self {
                 nodes,
-                head: None,
-                free: Some(free),
-                length: 0,
+                head,
+                length: size,
             }
-        }
-    }
-
-    pub fn push(&mut self, data: T) -> usize {
-        // Get the first free node
-        let node = self.free.expect("No free nodes available");
-
-        unsafe {
-            // Update free list head to next free node
-            self.free = (*node.as_ptr()).next;
-
-            // Setup the new node's data and link
-            (*node.as_ptr()).data = data;
-            (*node.as_ptr()).next = self.head;
-
-            // Update head to point to new node
-            self.head = Some(node);
-            self.length += 1;
-
-            // Calculate index by pointer arithmetic
-            node.as_ptr().offset_from(self.nodes.as_ptr()) as usize
         }
     }
 
@@ -312,77 +325,61 @@ mod tests {
     fn validate_list(
         list: &ForwardPoolList<i32, 4>,
         expected_items: &[i32],
-        expected_free_count: usize,
+        _expected_free_count: usize, // TODO remove argument
     ) {
-        // Count nodes in free list
-        let mut free_count = 0;
-        let mut current = list.free;
-
-        while let Some(ptr) = current {
-            current = unsafe { (*ptr.as_ptr()).next };
-            free_count += 1;
-        }
-
         let items = list.iter().copied().collect::<Vec<_>>();
         assert_eq!(items, expected_items);
-        assert_eq!(free_count, expected_free_count);
         assert_eq!(list.len(), expected_items.len());
+    }
+
+    // Construct a ForwardPoolList from an array. It is here because:
+    // - the only way to construct a ForwardPoolList is from an iterator
+    // - the function name is long and this is a shorthand
+    // - the size should be correct, we handle that here
+    fn pool_list_from_array(array: &[i32]) -> ForwardPoolList<i32, 4> {
+        let size = array.len();
+        ForwardPoolList::<i32, 4>::from_iter_with_size(array.iter().copied(), size)
+    }
+
+    // Construct a ForwardPoolList from a larger array.
+    // Used to test sorting.
+    fn pool_list_from_large_array(array: &[i32]) -> ForwardPoolList<i32, 53> {
+        let size = array.len();
+        ForwardPoolList::<i32, 53>::from_iter_with_size(array.iter().copied(), size)
     }
 
     #[test]
     fn test_new_list_is_empty() {
-        let list = ForwardPoolList::<i32, 4>::new();
+        let list = pool_list_from_array(&[]);
         validate_list(&list, &[], 4);
     }
 
     #[test]
-    fn test_push_and_iterate() {
-        let mut list = ForwardPoolList::<i32, 4>::new();
-
-        let index = list.push(111);
-        assert_eq!(index, 0);
-        validate_list(&list, &[111], 3);
-
-        let index = list.push(222);
-        assert_eq!(index, 1);
-        validate_list(&list, &[222, 111], 2);
-
-        let index = list.push(333);
-        assert_eq!(index, 2);
-        validate_list(&list, &[333, 222, 111], 1);
-    }
-
-    #[test]
     fn test_empty_operations() {
-        let mut list = ForwardPoolList::<i32, 4>::new();
+        let list = pool_list_from_array(&[]);
         assert!(list.is_empty());
 
-        list.push(1);
+        let list = pool_list_from_array(&[1]);
         assert!(!list.is_empty());
     }
 
     #[test]
     fn test_iter_mut() {
-        let mut list = ForwardPoolList::<i32, 4>::new();
-        list.push(1);
-        list.push(2);
-        list.push(3);
+        let mut list = pool_list_from_array(&[1, 2, 3]);
 
         // Multiply each element by 2
         for x in list.iter_mut() {
             *x *= 2;
         }
 
-        validate_list(&list, &[6, 4, 2], 1);
+        validate_list(&list, &[2, 4, 6], 1);
     }
 
     #[test]
     fn test_sort() {
-        let mut list = ForwardPoolList::<i32, 4>::new();
-        list.push(4);
-        list.push(2);
-        list.push(1);
-        list.push(3);
+        let mut list = pool_list_from_array(&[4, 2, 1, 3]);
+
+        validate_list(&list, &[4, 2, 1, 3], 0);
 
         assert_eq!(
             list.nodes.iter().map(|n| n.data).collect::<Vec<_>>(),
@@ -402,14 +399,14 @@ mod tests {
     #[test]
     fn test_sort_large_list() {
         for _ in 0..1000 {
-            let mut list = ForwardPoolList::<i32, 53>::new();
+            let array = (0..53)
+                .map(|_| rand::thread_rng().gen::<i32>())
+                .collect::<Vec<_>>();
 
-            for _ in 0..53 {
-                list.push(rand::thread_rng().gen::<i32>());
-            }
+            let mut list = pool_list_from_large_array(&array);
 
             list.sort();
-            let items = list.iter().collect::<Vec<_>>();
+            let items = list.iter().cloned().collect::<Vec<_>>();
             let mut sorted = items.clone();
             sorted.sort_by(|a, b| b.cmp(a));
             assert_eq!(items, sorted);
@@ -419,22 +416,19 @@ mod tests {
 
     #[test]
     fn test_first() {
-        let mut list = ForwardPoolList::<i32, 4>::new();
+        let list = pool_list_from_array(&[]);
         assert_eq!(list.first(), None);
 
-        list.push(111);
+        let list = pool_list_from_array(&[111]);
         assert_eq!(list.first(), Some(&111));
-
-        list.push(222);
-        assert_eq!(list.first(), Some(&222));
     }
 
     #[test]
     fn test_first_mut() {
-        let mut list = ForwardPoolList::<i32, 4>::new();
+        let mut list = pool_list_from_array(&[]);
         assert_eq!(list.first_mut(), None);
 
-        list.push(111);
+        let mut list = pool_list_from_array(&[111]);
         assert_eq!(list.first_mut(), Some(&mut 111));
 
         // Modify value through mutable reference
@@ -442,36 +436,47 @@ mod tests {
             *value = 999;
         }
         assert_eq!(list.first(), Some(&999));
-
-        list.push(222);
-        assert_eq!(list.first_mut(), Some(&mut 222));
     }
 
     #[test]
     fn test_clone() {
-        let mut original = ForwardPoolList::<i32, 4>::new();
-        original.push(1);
-        original.push(2);
-        original.push(3);
+        let mut original = pool_list_from_array(&[1, 2, 3]);
 
         // Create clone and validate both lists
-        let cloned = original.clone();
-        validate_list(&original, &[3, 2, 1], 1);
-        validate_list(&cloned, &[3, 2, 1], 1);
+        let mut cloned = original.clone();
+        validate_list(&original, &[1, 2, 3], 1);
+        validate_list(&cloned, &[1, 2, 3], 1);
 
         // Modify original and verify clone is unchanged
-        original.push(4);
-        validate_list(&original, &[4, 3, 2, 1], 0);
-        validate_list(&cloned, &[3, 2, 1], 1);
+        *(original.first_mut().unwrap()) = 4;
+        validate_list(&original, &[4, 2, 3], 1);
+        validate_list(&cloned, &[1, 2, 3], 1);
 
         // Verify clone can be modified independently
-        let mut cloned = cloned;
-        cloned.push(5);
-        validate_list(&original, &[4, 3, 2, 1], 0);
-        validate_list(&cloned, &[5, 3, 2, 1], 0);
+        *(cloned.first_mut().unwrap()) = 5;
+        validate_list(&original, &[4, 2, 3], 1);
+        validate_list(&cloned, &[5, 2, 3], 1);
 
         // Drop original and verify cloned is still valid
         drop(original);
-        validate_list(&cloned, &[5, 3, 2, 1], 0);
+        validate_list(&cloned, &[5, 2, 3], 1);
+    }
+
+    #[test]
+    fn test_from_iter_with_size() {
+        let list = ForwardPoolList::from_iter_with_size(0..0, 0);
+        validate_list(&list, &[], 4);
+
+        let list = ForwardPoolList::from_iter_with_size(0..1, 1);
+        validate_list(&list, &[0], 3);
+
+        let list = ForwardPoolList::from_iter_with_size(0..2, 2);
+        validate_list(&list, &[0, 1], 2);
+
+        let list = ForwardPoolList::from_iter_with_size(0..3, 3);
+        validate_list(&list, &[0, 1, 2], 1);
+
+        let list = ForwardPoolList::from_iter_with_size(0..4, 4);
+        validate_list(&list, &[0, 1, 2, 3], 0);
     }
 }

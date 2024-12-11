@@ -426,6 +426,11 @@ impl Iterator for MoveIndices {
         self.remaining_moves &= self.remaining_moves - 1;
         Some(index)
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.remaining_moves.count_ones() as usize;
+        (size, Some(size))
+    }
 }
 
 #[cfg(test)]
