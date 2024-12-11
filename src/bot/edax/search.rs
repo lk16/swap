@@ -617,7 +617,7 @@ impl Search {
                     2 => ((SCORE_MAX - state.eval_2(SCORE_MIN, -sort_alpha)) >> 1) * WEIGHT_EVAL,
                     _ => {
                         let mut score = (SCORE_MAX
-                            - self.pvs_shallow(SCORE_MIN, -sort_alpha, sort_depth))
+                            - self.pvs_shallow(state, SCORE_MIN, -sort_alpha, sort_depth))
                             * WEIGHT_EVAL;
 
                         if self.hash_table.get(state.position()).is_some() {
@@ -635,10 +635,14 @@ impl Search {
     }
 
     /// Like PVS_shallow() in Edax
-    fn pvs_shallow(self: &Arc<Self>, alpha: i32, mut beta: i32, depth: i32) -> i32 {
+    fn pvs_shallow(
+        self: &Arc<Self>,
+        state: &mut MutexGuard<'_, SearchState>,
+        alpha: i32,
+        mut beta: i32,
+        depth: i32,
+    ) -> i32 {
         let mut cost = -(self.n_nodes.load(Ordering::Relaxed) as i64);
-
-        let mut state = self.state.lock().unwrap();
 
         if depth == 2 {
             return state.eval_2(alpha, beta);
@@ -656,7 +660,7 @@ impl Search {
         if movelist.is_empty() {
             if state.position().opponent_has_moves() {
                 state.update_pass_midgame();
-                bestscore = -self.pvs_shallow(-beta, -alpha, depth);
+                bestscore = -self.pvs_shallow(state, -beta, -alpha, depth);
                 bestmove = PASS;
             } else {
                 bestscore = state.solve();
@@ -676,11 +680,11 @@ impl Search {
                 state.update_midgame(move_);
 
                 let score = if bestscore == -SCORE_INF {
-                    -self.pvs_shallow(-beta, -lower, depth - 1)
+                    -self.pvs_shallow(state, -beta, -lower, depth - 1)
                 } else {
                     let mut score = -self.nws_shallow(-lower - 1, depth - 1, &self.shallow_table);
                     if alpha < score && score < beta {
-                        score = -self.pvs_shallow(-beta, -lower, depth - 1);
+                        score = -self.pvs_shallow(state, -beta, -lower, depth - 1);
                     }
 
                     score
