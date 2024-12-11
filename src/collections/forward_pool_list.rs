@@ -178,7 +178,6 @@ impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
     }
 
     pub fn first_mut(&mut self) -> Option<&mut T> {
-        // TODO add tests for this
         self.head.map(|node| unsafe { &mut (*node.as_ptr()).data })
     }
 
