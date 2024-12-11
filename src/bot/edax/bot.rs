@@ -7,9 +7,6 @@ use super::search::Search;
 
 pub struct EdaxBot;
 
-pub const MIDGAME_DEPTH: u32 = 10;
-pub const ENDGAME_DEPTH: u32 = 18;
-
 pub const EDAX_LEVEL: i32 = 6;
 
 impl Bot for EdaxBot {
