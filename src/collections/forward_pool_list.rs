@@ -133,23 +133,6 @@ impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
         }
     }
 
-    pub fn pop(&mut self) -> Option<T> {
-        let node = self.head?;
-
-        unsafe {
-            // Update head to next node
-            self.head = (*node.as_ptr()).next;
-            self.length -= 1;
-
-            // Add node back to free list
-            (*node.as_ptr()).next = self.free;
-            self.free = Some(node);
-
-            // Return the data
-            Some(std::mem::take(&mut (*node.as_ptr()).data))
-        }
-    }
-
     pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             next: self.head,
@@ -371,34 +354,12 @@ mod tests {
     }
 
     #[test]
-    fn test_push_and_pop() {
-        let mut list = ForwardPoolList::<i32, 4>::new();
-
-        list.push(111);
-        list.push(222);
-        list.push(333);
-        validate_list(&list, &[333, 222, 111], 1);
-
-        assert_eq!(list.pop(), Some(333));
-        validate_list(&list, &[222, 111], 2);
-
-        assert_eq!(list.pop(), Some(222));
-        validate_list(&list, &[111], 3);
-
-        assert_eq!(list.pop(), Some(111));
-        validate_list(&list, &[], 4);
-    }
-
-    #[test]
     fn test_empty_operations() {
         let mut list = ForwardPoolList::<i32, 4>::new();
         assert!(list.is_empty());
 
         list.push(1);
         assert!(!list.is_empty());
-
-        list.pop();
-        assert!(list.is_empty());
     }
 
     #[test]
@@ -467,12 +428,24 @@ mod tests {
 
         list.push(222);
         assert_eq!(list.first(), Some(&222));
+    }
 
-        list.pop();
-        assert_eq!(list.first(), Some(&111));
+    #[test]
+    fn test_first_mut() {
+        let mut list = ForwardPoolList::<i32, 4>::new();
+        assert_eq!(list.first_mut(), None);
 
-        list.pop();
-        assert_eq!(list.first(), None);
+        list.push(111);
+        assert_eq!(list.first_mut(), Some(&mut 111));
+
+        // Modify value through mutable reference
+        if let Some(value) = list.first_mut() {
+            *value = 999;
+        }
+        assert_eq!(list.first(), Some(&999));
+
+        list.push(222);
+        assert_eq!(list.first_mut(), Some(&mut 222));
     }
 
     #[test]
@@ -494,15 +467,12 @@ mod tests {
 
         // Verify clone can be modified independently
         let mut cloned = cloned;
-        cloned.pop();
+        cloned.push(5);
         validate_list(&original, &[4, 3, 2, 1], 0);
-        validate_list(&cloned, &[2, 1], 2);
+        validate_list(&cloned, &[5, 3, 2, 1], 0);
 
         // Drop original and verify cloned is still valid
         drop(original);
-        validate_list(&cloned, &[2, 1], 2);
-        assert_eq!(cloned.pop(), Some(2));
-        assert_eq!(cloned.pop(), Some(1));
-        assert_eq!(cloned.pop(), None);
+        validate_list(&cloned, &[5, 3, 2, 1], 0);
     }
 }
