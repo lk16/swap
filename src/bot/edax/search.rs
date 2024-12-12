@@ -501,7 +501,7 @@ impl Search {
     /// Like movelist_evaluate() in Edax
     fn evaluate_movelist(
         self: &Arc<Self>,
-        movelist: &mut ForwardPoolList<Move, 64>,
+        movelist: &mut ForwardPoolList<Move>,
         hash_data: &HashData,
         alpha: i32,
         depth: i32,

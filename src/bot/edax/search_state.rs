@@ -39,7 +39,7 @@ pub struct SearchState {
     empties: PoolList<Square, 64>,
 
     /// Legal moves in `position`
-    move_list: ForwardPoolList<Move, 64>,
+    move_list: ForwardPoolList<Move>,
 
     /// Quadrant parity of `position`
     parity: u32,
@@ -100,7 +100,7 @@ impl SearchState {
     }
 
     /// Like search_get_movelist() in Edax
-    pub fn get_movelist(position: &Position) -> ForwardPoolList<Move, 64> {
+    pub fn get_movelist(position: &Position) -> ForwardPoolList<Move> {
         let moves = position.iter_move_indices();
 
         // We know that the lower_bound on size_hint() is giving exact size for MoveIndices
@@ -331,7 +331,7 @@ impl SearchState {
         None
     }
 
-    pub fn move_list(&self) -> &ForwardPoolList<Move, 64> {
+    pub fn move_list(&self) -> &ForwardPoolList<Move> {
         &self.move_list
     }
 
@@ -344,7 +344,7 @@ impl SearchState {
     ///
     /// Violating these requirements will break internal invariants and may cause
     /// incorrect behavior, though it won't cause memory safety issues.
-    pub fn move_list_mut(&mut self) -> &mut ForwardPoolList<Move, 64> {
+    pub fn move_list_mut(&mut self) -> &mut ForwardPoolList<Move> {
         &mut self.move_list
     }
 

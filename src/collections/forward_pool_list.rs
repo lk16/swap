@@ -16,23 +16,17 @@ struct Node<T> {
 /// like sorting and iteration.
 ///
 /// # Capacity
-/// The list has a fixed capacity `N` specified at compile time. It will not resize,
+/// The list has a fixed capacity specified at initialization time. It will not resize,
 /// and attempting to initialize with more items than the capacity will panic.
-pub struct ForwardPoolList<T: Default + PartialOrd, const N: usize> {
+pub struct ForwardPoolList<T: Default + PartialOrd> {
     // Underlying vector of nodes
     nodes: Vec<Node<T>>,
 
     // Head of the list
     head: Option<NonNull<Node<T>>>,
-
-    // Number of items in the list
-    length: usize,
 }
 
-impl<T, const N: usize> Clone for ForwardPoolList<T, N>
-where
-    T: Clone + Default + PartialOrd,
-{
+impl<T: Clone + Default + PartialOrd> Clone for ForwardPoolList<T> {
     fn clone(&self) -> Self {
         // Create a new list with cloned nodes data
         let mut nodes = self.nodes.clone();
@@ -59,16 +53,12 @@ where
                 NonNull::new_unchecked(base_ptr.add(offset))
             });
 
-            Self {
-                nodes,
-                head,
-                length: self.length,
-            }
+            Self { nodes, head }
         }
     }
 }
 
-impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
+impl<T: Default + PartialOrd> ForwardPoolList<T> {
     /// Creates a new `ForwardPoolList` from an iterator with a known size.
     ///
     /// This is the primary way to construct a `ForwardPoolList`. The list will be initialized
@@ -79,20 +69,13 @@ impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
     /// * `size` - The exact number of elements that will be taken from the iterator
     ///
     /// # Panics
-    /// * If `size` exceeds the list's capacity `N`
     /// * If the iterator yields fewer elements than specified by `size`
     pub fn from_iter_with_size<I: IntoIterator<Item = T>>(iter: I, size: usize) -> Self {
-        // TODO remove N and just allocate the vector with the size
-
-        // TODO #15 further optimization: size should never be too large, but this check may be slow.
-        assert!(size <= N, "Iterator size exceeds list capacity");
-
         // TODO #15 further optimization: size should never be zero, but the check for it may be slow.
         if size == 0 {
             return Self {
                 nodes: Vec::new(),
                 head: None,
-                length: 0,
             };
         }
 
@@ -102,7 +85,7 @@ impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
         // If so, consider allocating on the stack with a fixed size.
 
         // Allocate the vector with the correct capacity
-        let mut nodes: Vec<Node<T>> = Vec::with_capacity(N);
+        let mut nodes: Vec<Node<T>> = Vec::with_capacity(size);
 
         // SAFETY: The following unsafe block maintains these invariants:
         // 1. All pointers are derived from nodes.as_mut_ptr() which is valid for the lifetime of nodes
@@ -111,11 +94,10 @@ impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
         // 4. The last node's next pointer is set to None
         // 5. All pointer arithmetic is bounds-checked via the size parameter
         // 6. We initialize all nodes up to 'size' with valid data
-        // 7. The remaining nodes (size..N) remain uninitialized but are never accessed
 
         #[allow(clippy::uninit_vec)]
         unsafe {
-            nodes.set_len(N);
+            nodes.set_len(size);
 
             let base = NonNull::new_unchecked(nodes.as_mut_ptr());
 
@@ -138,11 +120,7 @@ impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
             // Setup head
             let head = Some(NonNull::new_unchecked(base.as_ptr()));
 
-            Self {
-                nodes,
-                head,
-                length: size,
-            }
+            Self { nodes, head }
         }
     }
 
@@ -164,20 +142,20 @@ impl<T: Default + PartialOrd, const N: usize> ForwardPoolList<T, N> {
     ///
     /// This is an O(1) operation.
     pub fn len(&self) -> usize {
-        self.length
+        self.nodes.len()
     }
 
     /// Returns true if the list is empty.
     ///
     /// This is an O(1) operation.
     pub fn is_empty(&self) -> bool {
-        self.length == 0
+        self.nodes.is_empty()
     }
 
     /// Sorts the list in descending order using the >= operator.
     /// Uses an in-place merge sort algorithm.
     pub fn sort(&mut self) {
-        if self.length <= 1 {
+        if self.nodes.len() <= 1 {
             return;
         }
 
@@ -315,18 +293,14 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 /// - The Vec is never resized after creation
 /// - All access to shared data is properly synchronized through mutable/shared references
 /// - The underlying type T must be both Send and Sync
-unsafe impl<T: Default + PartialOrd + Send + Sync, const N: usize> Send for ForwardPoolList<T, N> {}
+unsafe impl<T: Default + PartialOrd + Send + Sync> Send for ForwardPoolList<T> {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rand::Rng;
 
-    fn validate_list(
-        list: &ForwardPoolList<i32, 4>,
-        expected_items: &[i32],
-        _expected_free_count: usize, // TODO remove argument
-    ) {
+    fn validate_list(list: &ForwardPoolList<i32>, expected_items: &[i32]) {
         let items = list.iter().copied().collect::<Vec<_>>();
         assert_eq!(items, expected_items);
         assert_eq!(list.len(), expected_items.len());
@@ -336,22 +310,15 @@ mod tests {
     // - the only way to construct a ForwardPoolList is from an iterator
     // - the function name is long and this is a shorthand
     // - the size should be correct, we handle that here
-    fn pool_list_from_array(array: &[i32]) -> ForwardPoolList<i32, 4> {
+    fn pool_list_from_array(array: &[i32]) -> ForwardPoolList<i32> {
         let size = array.len();
-        ForwardPoolList::<i32, 4>::from_iter_with_size(array.iter().copied(), size)
-    }
-
-    // Construct a ForwardPoolList from a larger array.
-    // Used to test sorting.
-    fn pool_list_from_large_array(array: &[i32]) -> ForwardPoolList<i32, 53> {
-        let size = array.len();
-        ForwardPoolList::<i32, 53>::from_iter_with_size(array.iter().copied(), size)
+        ForwardPoolList::from_iter_with_size(array.iter().copied(), size)
     }
 
     #[test]
     fn test_new_list_is_empty() {
         let list = pool_list_from_array(&[]);
-        validate_list(&list, &[], 4);
+        validate_list(&list, &[]);
     }
 
     #[test]
@@ -372,14 +339,14 @@ mod tests {
             *x *= 2;
         }
 
-        validate_list(&list, &[2, 4, 6], 1);
+        validate_list(&list, &[2, 4, 6]);
     }
 
     #[test]
     fn test_sort() {
         let mut list = pool_list_from_array(&[4, 2, 1, 3]);
 
-        validate_list(&list, &[4, 2, 1, 3], 0);
+        validate_list(&list, &[4, 2, 1, 3]);
 
         assert_eq!(
             list.nodes.iter().map(|n| n.data).collect::<Vec<_>>(),
@@ -387,7 +354,7 @@ mod tests {
         );
 
         list.sort();
-        validate_list(&list, &[4, 3, 2, 1], 0);
+        validate_list(&list, &[4, 3, 2, 1]);
 
         // Nodes should be in the same order in the underlying vector
         assert_eq!(
@@ -403,7 +370,7 @@ mod tests {
                 .map(|_| rand::thread_rng().gen::<i32>())
                 .collect::<Vec<_>>();
 
-            let mut list = pool_list_from_large_array(&array);
+            let mut list = pool_list_from_array(&array);
 
             list.sort();
             let items = list.iter().cloned().collect::<Vec<_>>();
@@ -444,39 +411,39 @@ mod tests {
 
         // Create clone and validate both lists
         let mut cloned = original.clone();
-        validate_list(&original, &[1, 2, 3], 1);
-        validate_list(&cloned, &[1, 2, 3], 1);
+        validate_list(&original, &[1, 2, 3]);
+        validate_list(&cloned, &[1, 2, 3]);
 
         // Modify original and verify clone is unchanged
         *(original.first_mut().unwrap()) = 4;
-        validate_list(&original, &[4, 2, 3], 1);
-        validate_list(&cloned, &[1, 2, 3], 1);
+        validate_list(&original, &[4, 2, 3]);
+        validate_list(&cloned, &[1, 2, 3]);
 
         // Verify clone can be modified independently
         *(cloned.first_mut().unwrap()) = 5;
-        validate_list(&original, &[4, 2, 3], 1);
-        validate_list(&cloned, &[5, 2, 3], 1);
+        validate_list(&original, &[4, 2, 3]);
+        validate_list(&cloned, &[5, 2, 3]);
 
         // Drop original and verify cloned is still valid
         drop(original);
-        validate_list(&cloned, &[5, 2, 3], 1);
+        validate_list(&cloned, &[5, 2, 3]);
     }
 
     #[test]
     fn test_from_iter_with_size() {
         let list = ForwardPoolList::from_iter_with_size(0..0, 0);
-        validate_list(&list, &[], 4);
+        validate_list(&list, &[]);
 
         let list = ForwardPoolList::from_iter_with_size(0..1, 1);
-        validate_list(&list, &[0], 3);
+        validate_list(&list, &[0]);
 
         let list = ForwardPoolList::from_iter_with_size(0..2, 2);
-        validate_list(&list, &[0, 1], 2);
+        validate_list(&list, &[0, 1]);
 
         let list = ForwardPoolList::from_iter_with_size(0..3, 3);
-        validate_list(&list, &[0, 1, 2], 1);
+        validate_list(&list, &[0, 1, 2]);
 
         let list = ForwardPoolList::from_iter_with_size(0..4, 4);
-        validate_list(&list, &[0, 1, 2, 3], 0);
+        validate_list(&list, &[0, 1, 2, 3]);
     }
 }
