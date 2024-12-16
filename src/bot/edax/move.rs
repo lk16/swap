@@ -7,6 +7,9 @@ use crate::othello::{
 
 use super::r#const::SCORE_INF;
 
+/// Details of a move on a particular position.
+/// This is mostly used as the item inside MoveList.
+///
 /// Like Move in Edax
 #[derive(Default, Clone, Debug)]
 pub struct Move {
@@ -31,6 +34,7 @@ impl PartialEq for Move {
 }
 
 impl Move {
+    /// Create a new move from a position and a square.
     pub fn new(position: &Position, x: i32) -> Self {
         Self {
             flipped: position.get_flipped(x as usize),
@@ -40,17 +44,20 @@ impl Move {
         }
     }
 
+    /// Create a new pass move.
+    ///
     /// Like MOVE_PASS in Edax
     pub fn new_pass() -> Self {
-        Self::new_no_move(-SCORE_INF)
+        Self::new_pass_with_score(-SCORE_INF)
     }
 
-    /// Same as above, but for a different purpose.
-    /// This is used as initial value when iterating over moves.
+    /// Create a new move with a minimum score.
+    /// Useful as initial value when iterating over moves.
     pub fn new_min_score() -> Self {
-        Self::new_no_move(SCORE_INF)
+        Self::new_no_move_with_score(-SCORE_INF)
     }
 
+    /// Create a new pass move with a custom score.
     pub fn new_pass_with_score(score: i32) -> Self {
         Self {
             flipped: 0,
@@ -60,7 +67,8 @@ impl Move {
         }
     }
 
-    pub fn new_no_move(score: i32) -> Self {
+    /// Create a new no-move move with a custom score.
+    pub fn new_no_move_with_score(score: i32) -> Self {
         Self {
             flipped: 0,
             x: NO_MOVE as i32,
@@ -69,15 +77,8 @@ impl Move {
         }
     }
 
-    pub fn new_with_min_score() -> Self {
-        Self {
-            flipped: 0,
-            x: NO_MOVE as i32,
-            score: Cell::new(SCORE_INF),
-            cost: Cell::new(0),
-        }
-    }
-
+    /// Check if the move is legal for a given position.
+    ///
     /// Like board_check_move() in Edax
     pub fn is_legal(&self, position: &Position) -> bool {
         // TODO #15 Further optimization: this function checks too many things for certain call-sites
@@ -95,11 +96,15 @@ impl Move {
         position.get_flipped(x) == self.flipped
     }
 
+    /// Check if the move captures all opponent's pieces.
+    ///
     /// Like move_wipeout() in Edax
     pub fn is_wipeout(&self, position: &Position) -> bool {
         self.flipped == position.opponent
     }
 
+    /// Update the position with the move.
+    ///
     /// Like board_update() in Edax
     pub fn update(&self, position: &mut Position) {
         if self.x == PASS as i32 {
@@ -111,6 +116,8 @@ impl Move {
         }
     }
 
+    /// Restore the position to before the move.
+    ///
     /// Like board_restore() in Edax
     pub fn restore(&self, position: &mut Position) {
         if self.x == PASS as i32 {

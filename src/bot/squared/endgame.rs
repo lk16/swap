@@ -8,8 +8,12 @@ use crate::{
 pub static MIN_ENDGAME_SCORE: isize = -64;
 pub static MAX_ENDGAME_SCORE: isize = 64;
 
+/// Endgame search for SquaredBot.
 pub struct EndgameSearch {
+    /// Number of nodes visited
     nodes: u64,
+
+    /// The position being searched, changes during search.
     position: Position,
 }
 
@@ -20,6 +24,7 @@ impl Default for EndgameSearch {
 }
 
 impl EndgameSearch {
+    /// Create a new endgame search.
     pub fn new() -> Self {
         Self {
             nodes: 0,
@@ -27,7 +32,7 @@ impl EndgameSearch {
         }
     }
 
-    // TODO #5 bring from Edax, make this private again
+    /// Get the best move from the current position.
     pub fn get_move(&mut self, position: &Position) -> usize {
         let children = position.children_with_index();
 
@@ -59,6 +64,7 @@ impl EndgameSearch {
         best_move
     }
 
+    /// Negamax search for the best move.
     fn negamax(&mut self, mut alpha: isize, beta: isize) -> isize {
         self.nodes += 1;
 
@@ -98,7 +104,7 @@ impl EndgameSearch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::othello::ffo_problems::parse_ffo_problems;
+    use crate::othello::ffo_problems::tests::parse_ffo_problems;
 
     #[test]
     fn test_ffo_problems() {

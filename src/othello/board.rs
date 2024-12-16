@@ -3,16 +3,25 @@ use std::fmt::{self, Display};
 
 use super::position::{GameState, Position};
 
+/// Represents player with black discs is to move
 pub const BLACK: usize = 0;
+
+/// Represents player with white discs is to move
 pub const WHITE: usize = 1;
 
+/// Returns the opponent of a player
 pub fn opponent(color: usize) -> usize {
     1 - color
 }
 
+/// Representation of an Othello board.
+/// This is essentially a `Position` that keeps track of whose turn it is.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Board {
+    /// The position of the board
     pub position: Position,
+
+    /// Whose turn it is
     pub turn: usize,
 }
 
@@ -30,6 +39,7 @@ impl Display for Board {
 }
 
 impl Board {
+    /// Create a new board with the default starting position.
     pub fn new() -> Self {
         Self {
             position: Position::new(),
@@ -37,6 +47,7 @@ impl Board {
         }
     }
 
+    /// Create a new board with a random XOT position.
     pub fn new_xot() -> Self {
         Self {
             position: Position::new_xot(),
@@ -44,6 +55,7 @@ impl Board {
         }
     }
 
+    /// Create a board from bitboards and whose turn it is.
     pub fn new_from_bitboards(black: u64, white: u64, turn: usize) -> Self {
         let (player, opponent) = if turn == BLACK {
             (black, white)
@@ -55,41 +67,55 @@ impl Board {
         Self::combine(position, turn)
     }
 
+    /// Combine a position and whose turn it is into a board.
     pub fn combine(position: Position, turn: usize) -> Self {
         Self { position, turn }
     }
 
+    /// Get a bitset of valid moves for the player to move.
     pub fn get_moves(&self) -> u64 {
         self.position.get_moves()
     }
 
+    /// Check if there are any valid moves for the player to move.
     pub fn has_moves(&self) -> bool {
         self.position.has_moves()
     }
 
+    /// Check if a move is valid for the player to move.
     pub fn is_valid_move(&self, index: usize) -> bool {
         self.position.is_valid_move(index)
     }
 
+    /// Update the board by doing a move.
+    /// This function does not check if the move is valid.
     pub fn do_move(&mut self, index: usize) {
         self.position.do_move(index);
         self.turn = opponent(self.turn);
     }
 
+    /// Pass the turn to the opponent.
+    /// This function does not check if the player or the opponent has any moves.
     pub fn pass(&mut self) {
         self.turn = opponent(self.turn);
         self.position.pass();
     }
 
+    /// Get the game state, which indicates whether the game is finished,
+    /// whether the player has passed, or whether the player has moves.
     pub fn game_state(&self) -> GameState {
         self.position.game_state()
     }
 
+    /// Get the ASCII art representation of the board.
     pub fn ascii_art(&self) -> String {
         self.position.ascii_art(self.turn)
     }
 
+    /// Get the board as a WebSocket message.
     pub fn as_ws_message(&self) -> String {
+        // TODO #16 Convert this code into a serializer
+
         let mut black = Vec::new();
         let mut white = Vec::new();
         let mut moves = Vec::new();
@@ -129,10 +155,12 @@ impl Board {
         .to_string()
     }
 
+    /// Count the number of discs on the board.
     pub fn count_discs(&self) -> u32 {
         self.position.count_discs()
     }
 
+    /// Get the bitboard of black discs.
     pub fn black_discs(&self) -> u64 {
         if self.turn == BLACK {
             self.position.player
@@ -141,6 +169,7 @@ impl Board {
         }
     }
 
+    /// Get the bitboard of white discs.
     pub fn white_discs(&self) -> u64 {
         if self.turn == BLACK {
             self.position.opponent
@@ -149,6 +178,7 @@ impl Board {
         }
     }
 
+    /// Do a move, but return a new board instead of modifying the current one.
     pub fn do_move_cloned(&self, index: usize) -> Self {
         let position = self.position.do_move_cloned(index);
         Self::combine(position, opponent(self.turn))

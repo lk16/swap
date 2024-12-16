@@ -1,3 +1,8 @@
+/// Compute flipped discs when moving to a given square.
+///
+/// `player` is the bitboard of the player's discs.
+/// `opponent` is the bitboard of the opponent's discs.
+/// `index` is the index of the square of the move
 pub fn get_flipped_edax_slow(player: u64, opponent: u64, index: usize) -> u64 {
     fn x_to_bit(x: i32) -> u64 {
         1u64 << (x as usize)

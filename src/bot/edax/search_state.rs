@@ -24,10 +24,12 @@ use super::{
 /// - `parity` contains quadrant parity of `position`
 /// - `empties` contains only squares that are actually empty in `position`
 /// - `x_to_empties` correctly maps square indices to their position in `empties`
+///
+/// Additionally, for midgame search we maintain this invariant:
 /// - `eval` correctly represents the evaluation state of `position`
 ///
-/// These invariants are maintained by all public methods and the constructor.
-/// See the test module for verification of these invariants.
+/// Invariants are maintained by all public methods and the constructor.
+/// See the test module for details and verification.
 pub struct SearchState {
     /// Search position, changes during search
     position: Position,
@@ -64,6 +66,8 @@ pub struct SearchState {
 }
 
 impl SearchState {
+    /// Create a new search state for a position.
+    ///
     /// Includes logic of search_setup()
     pub fn new(position: &Position) -> Self {
         let n_empties = position.count_empty() as i32;
@@ -103,6 +107,8 @@ impl SearchState {
         }
     }
 
+    /// Compute depth of PV extension.
+    ///
     /// Like get_pv_extension() in Edax
     fn get_pv_extension(n_empties: i32, depth: i32) -> i32 {
         if depth >= n_empties || depth <= 9 {
@@ -118,11 +124,15 @@ impl SearchState {
         }
     }
 
+    /// Clamp a score to the stability bound.
+    ///
     /// Like search_bound() in Edax
     pub fn bound(&self, score: i32) -> i32 {
         score.clamp(self.stability_bound.lower, self.stability_bound.upper)
     }
 
+    /// Pass move for midgame search.
+    ///
     /// Like update_pass_midgame() in Edax
     pub fn update_pass_midgame(&mut self) {
         const NEXT_NODE_TYPE: [NodeType; 3] =
@@ -135,6 +145,8 @@ impl SearchState {
             NEXT_NODE_TYPE[self.node_type[(self.height - 1) as usize] as usize];
     }
 
+    /// Restore passing a move for midgame search.
+    ///
     /// Like restore_pass_midgame() in Edax
     pub fn restore_pass_midgame(&mut self) {
         self.position.pass();
@@ -142,11 +154,15 @@ impl SearchState {
         self.height -= 1;
     }
 
+    /// Evaluate the position using heuristic.
+    ///
     /// Like search_eval_0() in Edax
     pub fn eval_0(&self) -> i32 {
         self.eval.heuristic()
     }
 
+    /// Evaluate the position using heuristic at depth 1.
+    ///
     /// Like search_eval_1() in Edax
     pub fn eval_1(&mut self, alpha: i32, mut beta: i32) -> i32 {
         let weights =
@@ -211,6 +227,8 @@ impl SearchState {
         bestscore
     }
 
+    /// Evaluate the position using heuristic at depth 2.
+    ///
     /// Like search_eval_2() in Edax
     pub fn eval_2(&mut self, mut alpha: i32, beta: i32) -> i32 {
         let moves = self.position.get_moves();
@@ -260,6 +278,8 @@ impl SearchState {
         self.position.final_score_with_empty(self.n_empties)
     }
 
+    /// Update the search by playing a move in midgame search.
+    ///
     /// Like search_update_midgame() in Edax
     pub fn update_midgame(&mut self, move_: &Move) {
         const NEXT_NODE_TYPE: [NodeType; 3] =
@@ -282,6 +302,8 @@ impl SearchState {
             NEXT_NODE_TYPE[self.node_type[(self.height - 1) as usize] as usize];
     }
 
+    /// Restore a move in midgame search.
+    ///
     /// Like search_restore_midgame() in Edax
     pub fn restore_midgame(&mut self, move_: &Move) {
         // Restore parity by XORing again with the same quadrant ID (XOR is its own inverse)
@@ -299,6 +321,8 @@ impl SearchState {
         self.height -= 1;
     }
 
+    /// Stability cutoff for Null Window Search.
+    ///
     /// Like search_SC_NWS() in Edax
     pub fn stability_cutoff_nws(&self, alpha: i32) -> Option<i32> {
         if alpha >= NWS_STABILITY_THRESHOLD[self.n_empties as usize] {
@@ -311,6 +335,8 @@ impl SearchState {
         None
     }
 
+    /// Stability cutoff for Principal Variation Search.
+    ///
     /// Like search_SC_PVS() in Edax
     pub fn stability_cutoff_pvs(&self, alpha: i32, beta: &mut i32) -> Option<i32> {
         if *beta >= PVS_STABILITY_THRESHOLD[self.n_empties as usize] {
@@ -325,63 +351,62 @@ impl SearchState {
         None
     }
 
+    /// Get move_list.
     pub fn move_list(&self) -> &MoveList {
         &self.move_list
     }
 
-    /// Returns a mutable reference to the move list.
-    ///
-    /// # Contract
-    /// The caller MUST ensure that:
-    /// - No moves are added to or removed from the list
-    /// - Only the scores or ordering of existing moves are modified
-    ///
-    /// Violating these requirements will break internal invariants and may cause
-    /// incorrect behavior, though it won't cause memory safety issues.
-    pub fn move_list_mut(&mut self) -> &mut MoveList {
-        &mut self.move_list
-    }
-
+    /// Get position.
     pub fn position(&self) -> &Position {
         &self.position
     }
 
+    /// Get stability bound.
     pub fn stability_bound(&self) -> &Bound {
         &self.stability_bound
     }
 
+    /// Get number of empty squares.
     pub fn n_empties(&self) -> i32 {
         self.n_empties
     }
 
+    /// Get parity.
     pub fn parity(&self) -> u32 {
         self.parity
     }
 
+    /// Sort move list by score.
     pub fn sort_move_list_by_score(&mut self) {
         self.move_list.sort_by_score();
     }
 
+    /// Sort move list by cost using hash data.
     pub fn sort_move_list_by_cost(&mut self, hash_data: &HashData) {
         self.move_list.sort_by_cost(hash_data);
     }
 
+    /// Set first move.
     pub fn set_first_move(&mut self, move_: i32) {
         self.move_list.set_first_move(move_);
     }
 
+    /// Set best move score.
     pub fn set_best_move_score(&self, score: i32) {
         self.move_list.first().unwrap().score.set(score);
     }
 
+    /// Get best move.
     pub fn get_best_move(&self) -> &Move {
         self.move_list.first().unwrap()
     }
 
+    /// Set depth of PV extension.
     pub fn set_pv_extension(&mut self, depth: i32) {
         self.depth_pv_extension = Self::get_pv_extension(self.n_empties, depth);
     }
 
+    /// Randomize score for all moves in move list.
     pub fn randomize_move_list_score(&self) {
         for move_ in self.move_list.iter() {
             let score = rand::thread_rng().gen::<i32>() & 0x7fffffff;
@@ -389,18 +414,23 @@ impl SearchState {
         }
     }
 
+    /// Set move list.
     pub fn set_move_list(&mut self, move_list: MoveList) {
         self.move_list = move_list;
     }
 
+    /// Get height.
     pub fn height(&self) -> i32 {
         self.height
     }
 
+    /// Get depth of PV extension.
     pub fn depth_pv_extension(&self) -> i32 {
         self.depth_pv_extension
     }
 
+    /// Update the search by playing a move in endgame search.
+    ///
     /// Like search_update_endgame() in Edax
     pub fn update_endgame(&mut self, move_: &Move) {
         self.parity ^= QUADRANT_ID[move_.x as usize];
@@ -409,6 +439,8 @@ impl SearchState {
         self.n_empties -= 1;
     }
 
+    /// Restore a move in endgame search.
+    ///
     /// Like search_restore_endgame() in Edax
     pub fn restore_endgame(&mut self, move_: &Move) {
         self.parity ^= QUADRANT_ID[move_.x as usize];
@@ -417,19 +449,25 @@ impl SearchState {
         self.n_empties += 1;
     }
 
+    /// Get empties list.
     pub fn empties(&self) -> &EmptiesList {
         &self.empties
     }
 
+    /// Pass move in endgame search.
+    /// Also functions as restore for passing a move in endgame search.
+    ///
     /// Like search_pass_endgame() in Edax
     pub fn pass_endgame(&mut self) {
         self.position.pass();
     }
 
+    /// Get probcut level.
     pub fn probcut_level(&self) -> i32 {
         self.probcut_level
     }
 
+    /// Set probcut level.
     pub fn set_probcut_level(&mut self, level: i32) {
         self.probcut_level = level;
     }

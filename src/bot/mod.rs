@@ -10,11 +10,15 @@ pub mod edax;
 pub mod random;
 pub mod squared;
 
+/// A bot that can compute the best move for a position.
 pub trait Bot: Send {
-    // Returns the index of a valid move
+    /// Computes the best move for a position.
+    /// At least one move must be available in `position`.
+    /// Returns the index of the move.
     fn get_move(&mut self, position: &Position) -> usize;
 }
 
+/// Get a bot by name or `None` if not found`.
 pub fn get_bot(name: &str) -> Option<Box<dyn Bot>> {
     match name {
         "random" => Some(Box::new(RandomBot)),
@@ -24,11 +28,14 @@ pub fn get_bot(name: &str) -> Option<Box<dyn Bot>> {
     }
 }
 
+/// Print a search header.
+// TODO move into folder for SquaredBot
 pub fn print_search_header(name: &'static str, is_endgame: bool, depth: u32) {
     let search = if is_endgame { "endgame" } else { "midgame" };
     println!("{} searching {} at depth {}", name, search, depth);
 }
 
+/// Format a score to be 4 characters wide.
 pub fn format_score(score: isize) -> String {
     let mut result = String::new();
 
@@ -51,6 +58,7 @@ pub fn format_score(score: isize) -> String {
     format!("{:>4}", result)
 }
 
+/// Format a number of nodes to be 8 characters wide.
 pub fn format_nodes(nodes: u64) -> String {
     let suffixes = [" ", "k", "M", "G", "T", "P", "E"];
     let mut value = nodes as f64;
@@ -74,6 +82,8 @@ pub fn format_nodes(nodes: u64) -> String {
     }
 }
 
+/// Print move stats.
+// TODO move into folder for SquaredBot
 pub fn print_move_stats(
     nodes: u64,
     current_move: usize,
@@ -96,6 +106,8 @@ pub fn print_move_stats(
     );
 }
 
+/// Print total stats.
+// TODO move into folder for SquaredBot
 pub fn print_total_stats(total_nodes: u64, total_duration: Duration) {
     let speed = (total_nodes as f64 / total_duration.as_secs_f64()) as u64;
 

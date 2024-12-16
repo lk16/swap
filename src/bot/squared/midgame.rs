@@ -8,16 +8,22 @@ use crate::{
 static MIN_MIDGAME_SCORE: isize = -64000;
 static MAX_MIDGAME_SCORE: isize = 64000;
 
+/// Midgame search for SquaredBot.
 pub struct MidgameSearch {
+    /// Number of nodes visited
     nodes: u64,
+
+    /// The position being searched, changes during search.
     position: Position,
 }
 
 impl MidgameSearch {
+    /// Create a new midgame search.
     pub fn new(position: Position) -> Self {
         Self { nodes: 0, position }
     }
 
+    /// Get the best move from the current position.
     pub fn get_move(&mut self) -> usize {
         let children = self.position.children_with_index();
         let mut best_move = children.first().unwrap().0;
@@ -48,6 +54,7 @@ impl MidgameSearch {
         best_move
     }
 
+    /// Negamax search for the best move.
     fn negamax(&mut self, position: &Position, depth: u32, mut alpha: isize, beta: isize) -> isize {
         self.nodes += 1;
 
@@ -84,6 +91,7 @@ impl MidgameSearch {
         alpha
     }
 
+    /// Heuristic for evaluating the position.
     fn heuristic(position: &Position) -> isize {
         const CORNERS: u64 = 0x8100000000000081u64; // Mask for corner positions
 

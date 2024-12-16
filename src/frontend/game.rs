@@ -1,6 +1,9 @@
-use super::{board::Board, position::GameState};
 use crate::bot::{get_bot, Bot};
+use crate::othello::board::Board;
+use crate::othello::position::GameState;
 
+/// A game of Othello as used by the websocket server.
+/// We maintain a history of moves for undoing and redoing.
 pub struct Game {
     /// The boards in the game history
     boards: Vec<Board>,
@@ -8,7 +11,7 @@ pub struct Game {
     /// The index of the current board in the `boards` vector
     offset: usize,
 
-    /// The bots for each player
+    /// Bot player for black and white. If a player is human, the bot is `None`.
     bots: [Option<Box<dyn Bot>>; 2],
 }
 
@@ -19,6 +22,7 @@ impl Default for Game {
 }
 
 impl Game {
+    /// Create a new game with the starting board.
     pub fn new() -> Self {
         Self {
             boards: vec![Board::new()],
@@ -27,6 +31,7 @@ impl Game {
         }
     }
 
+    /// Set the bot for a player.
     pub fn set_player(&mut self, color: usize, bot_name: &str) {
         let bot = if bot_name == "human" {
             None
@@ -37,17 +42,19 @@ impl Game {
         self.bots[color] = bot;
     }
 
+    /// Get the bot for the current player.
     #[allow(clippy::borrowed_box)]
     pub fn get_current_bot(&mut self) -> Option<&mut Box<dyn Bot>> {
         let turn = self.current_board().turn;
         self.bots[turn].as_mut()
     }
 
+    /// Check if a human is to move and has moves.
     fn has_human_turn(&self, board: &Board) -> bool {
         self.bots[board.turn].is_none() && board.has_moves()
     }
 
-    /// Returns true if the undo was successful
+    /// Undo a move. Returns true if a move was undone.
     pub fn undo(&mut self) -> bool {
         let mut moves_to_undo: Option<usize> = None;
 
@@ -69,7 +76,7 @@ impl Game {
         true
     }
 
-    /// Returns true if the redo was successful
+    /// Redo a move. Returns true if a move was redone.
     pub fn redo(&mut self) -> bool {
         for i in self.offset + 1..self.boards.len() {
             if self.has_human_turn(&self.boards[i]) {
@@ -81,6 +88,7 @@ impl Game {
         false
     }
 
+    /// Make a move.
     pub fn do_move(&mut self, move_index: usize) {
         let mut board = self.current_board().do_move_cloned(move_index);
 
@@ -97,11 +105,13 @@ impl Game {
         }
     }
 
+    /// Reset the game to a new board.
     pub fn reset(&mut self, board: Board) {
         self.boards = vec![board];
         self.offset = 0;
     }
 
+    /// Get the current board.
     pub fn current_board(&self) -> &Board {
         &self.boards[self.offset]
     }

@@ -2,6 +2,7 @@ use std::{ops::Index, ptr::NonNull};
 
 use crate::bot::edax::square::Square;
 
+/// A node in the `EmptiesList`.
 #[derive(Default, Clone)]
 struct Node {
     // Data stored in this node
@@ -24,6 +25,13 @@ struct Node {
 /// # Capacity and Initialization
 /// The list is initialized with a fixed set of Squares and cannot grow or shrink after creation.
 /// The first entry in the underlying vector serves as a sentinel node for the circular list.
+///
+/// # Invariants
+/// Once the list is created, the following invariants are maintained:
+/// - No new squares can be added to or permanently removed from the list
+/// - Only temporary removal and restoration of existing squares is possible
+/// - Squares in the list cannot be modified
+/// - Squares remain in their original memory location even when temporarily removed
 ///
 /// # Performance
 /// - Remove: O(1)
@@ -49,20 +57,12 @@ struct Node {
 /// 3. Restore moves when backtracking
 /// 4. Efficiently look up moves by their coordinates
 pub struct EmptiesList {
+    /// Nodes in the list.
     nodes: Vec<Node>,
 
-    // Maps square to index in `nodes`
+    /// Maps square to index in `nodes`.
     x_to_node: [usize; 64],
 }
-
-/// Implements `Send` for `EmptiesList`, allowing it to be transferred across thread boundaries.
-///
-/// # Safety
-/// This implementation is safe because:
-/// - All internal pointers (`NonNull`) are derived from the `nodes` Vec, which never changes location
-/// - The Vec is never resized after creation
-/// - All access to shared data is properly synchronized through mutable/shared references
-unsafe impl Send for EmptiesList {}
 
 impl Clone for EmptiesList {
     fn clone(&self) -> Self {
@@ -71,6 +71,8 @@ impl Clone for EmptiesList {
 }
 
 impl EmptiesList {
+    /// Create a new `EmptiesList` from an iterator with a given size.
+    /// This is the only way to create an `EmptiesList`.
     pub fn from_iter_with_size<I: IntoIterator<Item = Square>>(iter: I, size: usize) -> Self {
         let mut nodes = Vec::with_capacity(size + 1);
 
@@ -126,6 +128,9 @@ impl EmptiesList {
         }
     }
 
+    /// Remove a node from the list.
+    /// The node is selected by index in the underlying vector.
+    /// The removed node never gets deallocated or changed. This allows for efficient restoration.
     fn remove(&mut self, index: usize) {
         let node = &mut self.nodes[index];
 
@@ -143,6 +148,8 @@ impl EmptiesList {
         }
     }
 
+    /// Restore a previously removed node to the list.
+    /// The node is selected by index in the underlying vector.
     fn restore(&mut self, index: usize) {
         let node = &mut self.nodes[index];
 
@@ -162,6 +169,7 @@ impl EmptiesList {
         }
     }
 
+    /// Iterate over all nodes in the list.
     pub fn iter(&self) -> Iter {
         // SAFETY: This is safe because:
         // 1. We're only using the sentinel pointer for comparison in the iterator
@@ -176,33 +184,42 @@ impl EmptiesList {
         }
     }
 
+    /// Iterate over all squares with an even number of empties in their quadrant.
     pub fn iter_even(&self, parity: u32) -> impl Iterator<Item = &Square> {
         self.iter().filter(move |&s| parity & s.quadrant == 0)
     }
 
+    /// Iterate over all squares with an odd number of empties in their quadrant.
     pub fn iter_odd(&self, parity: u32) -> impl Iterator<Item = &Square> {
         self.iter().filter(move |&s| parity & s.quadrant != 0)
     }
 
+    /// Remove a square from the list.
+    /// The square is selected by its x-coordinate.
     pub fn remove_by_x(&mut self, x: i32) {
         let index = self.x_to_node[x as usize];
-        self.remove(index);
+        self.remove(index); // TODO inline this call
     }
 
+    /// Restore a previously removed square to the list.
+    /// The square is selected by the its x-coordinate.
     pub fn restore_by_x(&mut self, x: i32) {
         let index = self.x_to_node[x as usize];
-        self.restore(index);
+        self.restore(index); // TODO inline this call
     }
 
+    /// Get the number of squares in the list.
     pub fn len(&self) -> usize {
         self.nodes.len() - 1
     }
 
+    /// Check if the list is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }
 
+/// An iterator over all squares in the list.
 pub struct Iter<'a> {
     next: Option<NonNull<Node>>,
     sentinel: NonNull<Node>,
@@ -228,6 +245,7 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
+// TODO this is not used, remove.
 impl Index<usize> for EmptiesList {
     type Output = Square;
 

@@ -8,33 +8,59 @@ use super::{
     search::{Search, Shared},
 };
 
+/// Contents of Node.
 struct NodeInner {
+    /// Upper bound on the score of the best move.
     alpha: i32,
+
+    /// Lower bound on the score of the best move.
     beta: i32,
+
+    /// Depth of the node in the search tree.
     depth: i32,
+
+    /// Height of the node in the search tree.
     height: i32,
+
+    /// Whether this node is a PV node.
     pv_node: bool,
+
+    /// Number of moves left to evaluate.
     n_moves_todo: i32,
+
+    /// Number of moves already evaluated.
     n_moves_done: i32,
 
+    /// Pointer to the parent node.
     #[allow(unused)] // TODO #8 Concurrent search: use this field
     parent: Option<Arc<Node>>,
 
+    /// Shared search state.
     search: Arc<Shared>,
+
+    /// Index of the best move.
     best_move: i32,
+
+    /// Score of the best move.
     best_score: i32,
 
-    // Edax just stores a pointer to a move list kept elsewhere.
-    // We keep it here to obey borrowing rules.
+    /// List of moves to evaluate.
+    /// Edax just stores a pointer to a move list kept elsewhere.
+    /// We own the entire move list for simplicity and to obey borrowing rules.
     move_list: MoveList,
 }
 
+/// Maintains thread-safe details about a position while doing concurrent tree search.
+///
+/// Like Node in Edax.
 pub struct Node {
     // TODO #8 Concurrent search: consider using RwLock instead of Mutex
     inner: Mutex<NodeInner>,
 }
 
 impl Node {
+    /// Create a new node.
+    ///
     /// Like node_init() in Edax, except we send `height` as extra argument
     pub fn new(
         search: Arc<Shared>,
@@ -98,62 +124,77 @@ impl Node {
         }
     }
 
+    /// Try to start a new thread to search children.
+    /// Returns true if we started a new thread.
+    ///
     /// Like node_split() in Edax
     pub fn split(&self, _move_: &Move) -> bool {
         // TODO #8 Concurrent search: heart of the YBWC algorithm
         false
     }
 
+    /// Wait for slave threads to finish.
+    ///
     /// Like node_wait_slaves() in Edax
     pub fn wait_slaves(&self) {
         todo!() // TODO #8 Concurrent search: wait for slaves to finish
     }
 
+    /// Set whether this node is a PV node.
     pub fn set_pv_node(&self, pv_node: bool) {
         let mut inner = self.inner.lock().unwrap();
         inner.pv_node = pv_node;
     }
 
+    /// Get alpha
     pub fn alpha(&self) -> i32 {
         let inner = self.inner.lock().unwrap();
         inner.alpha
     }
 
+    /// Get beta
     pub fn beta(&self) -> i32 {
         let inner = self.inner.lock().unwrap();
         inner.beta
     }
 
+    /// Set best score
     pub fn set_best_score(&self, score: i32) {
         let mut inner = self.inner.lock().unwrap();
         inner.best_score = score;
     }
 
+    /// Get best move
     pub fn best_move(&self) -> i32 {
         let inner = self.inner.lock().unwrap();
         inner.best_move
     }
 
+    /// Get best score
     pub fn best_score(&self) -> i32 {
         let inner = self.inner.lock().unwrap();
         inner.best_score
     }
 
+    /// Set alpha
     pub fn set_alpha(&self, alpha: i32) {
         let mut inner = self.inner.lock().unwrap();
         inner.alpha = alpha;
     }
 
+    /// Set beta
     pub fn set_beta(&self, beta: i32) {
         let mut inner = self.inner.lock().unwrap();
         inner.beta = beta;
     }
 
+    /// Set best move
     pub fn set_best_move(&self, move_: i32) {
         let mut inner = self.inner.lock().unwrap();
         inner.best_move = move_;
     }
 
+    /// Set the move list and prepare for iteration.
     pub fn set_move_list(&self, move_list: MoveList) {
         let mut inner = self.inner.lock().unwrap();
         inner.n_moves_todo = move_list.len() as i32;
@@ -185,11 +226,13 @@ impl Node {
         Some((index, move_))
     }
 
+    /// Set the score of a move by index in move_list.
     pub fn set_move_score(&self, index: usize, score: i32) {
         let mut inner = self.inner.lock().unwrap();
         inner.move_list.set_score(index, score);
     }
 
+    /// Set the score and cost of a move by index in move_list.
     pub fn set_move_score_and_cost(&self, index: usize, score: i32, cost: u32) {
         let mut inner = self.inner.lock().unwrap();
         inner.move_list.set_score_and_cost(index, score, cost);

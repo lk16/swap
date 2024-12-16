@@ -1,6 +1,10 @@
 use crate::othello::squares::*;
 
-// Like SquareList in Edax
+/// A square on the board.
+/// This is used for keeping track of remaining empty squares.
+///
+/// Like SquareList in Edax, except we don't store links in the same struct.
+/// In this implementation, Square is used as an item in EmptiesList.
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct Square {
     /// Bitset representation of the square
@@ -14,6 +18,7 @@ pub struct Square {
 }
 
 impl Square {
+    /// Create a new square from an index.
     pub fn new(x: usize) -> Self {
         Self {
             b: 1 << x,
@@ -23,6 +28,7 @@ impl Square {
     }
 }
 
+/// Maps the coordinates of a square to its quadrant.
 #[rustfmt::skip]
 pub const QUADRANT_ID: [u32; 66] = [
     1, 1, 1, 1, 2, 2, 2, 2,
@@ -36,6 +42,9 @@ pub const QUADRANT_ID: [u32; 66] = [
     0, 0
 ];
 
+/// Presorted square coordinates.
+///
+/// Like PRESORTED_X in Edax
 #[rustfmt::skip]
 pub const PRESORTED_X: [usize; 64] = [
     A1, A8, H1, H8,                 /* Corner */
@@ -50,7 +59,7 @@ pub const PRESORTED_X: [usize; 64] = [
     D4, E4, D5, E5,                 /* center */
 ];
 
-/// Used for move sorting
+/// Square values. Used for move sorting.
 ///
 /// Like SQUARE_VALUE in Edax
 #[rustfmt::skip]

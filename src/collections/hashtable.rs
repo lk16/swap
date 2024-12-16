@@ -11,18 +11,32 @@ use crate::othello::squares::NO_MOVE;
 /// A fixed-size bucket for storing hash table entries
 const BUCKET_SIZE: usize = 4;
 
-/// Represents cached evaluation data for an othello position
+/// Represents cached evaluation data for an Othello position
 ///
 /// Stores evaluation scores, move history, and metadata for a position.
 /// Like HashData in Edax.
 #[derive(Clone, Copy)]
 pub struct HashData {
+    /// Depth of the search
     pub depth: u8,
+
+    /// Selectivity level of the search
     pub selectivity: u8,
+
+    /// Log2 of the cost of the search
     pub cost: u8,
+
+    /// Date of the search, updated on every access.
+    /// Used for replacement strategy. We want to keep the most recently accessed entries.
     pub date: u8,
+
+    /// Lower bound of the score found by the search
     pub lower: i8,
+
+    /// Upper bound of the score found by the search
     pub upper: i8,
+
+    /// First and second best move found by the search
     pub move_: [u8; 2],
 }
 
@@ -42,6 +56,8 @@ impl Default for HashData {
 }
 
 impl HashData {
+    /// Create a new `HashData` entry.
+    ///
     /// Like data_new() in Edax
     fn new(date: u8, args: &StoreArgs) -> Self {
         let score = args.score as i8;
@@ -74,11 +90,13 @@ impl HashData {
         }
     }
 
-    /// Calculates a priority level for replacement strategy based on the entry's metadata
+    /// Calculate a priority level for replacement strategy based on the entry's metadata.
     pub fn writable_level(&self) -> u32 {
         u32::from_le_bytes([self.depth, self.selectivity, self.cost, self.date])
     }
 
+    /// Update the entry with new evaluation data.
+    ///
     /// Like data_update() in Edax
     fn update(&mut self, args: &StoreArgs) {
         let score = args.score as i8;
@@ -107,6 +125,8 @@ impl HashData {
         self.cost = cost.max(self.cost);
     }
 
+    /// Upgrade the entry with new evaluation data.
+    ///
     /// Like data_upgrade() in Edax
     fn upgrade(&mut self, args: &StoreArgs) {
         let score = args.score as i8;
@@ -140,14 +160,21 @@ impl HashData {
     }
 }
 
+/// A single entry in the hash table.
+///
 /// Like Hash in Edax
 #[derive(Default, Clone, Copy)]
 struct Entry {
+    /// The position being searched
     position: Position,
+
+    /// The cached evaluation data
     hash_data: HashData,
 }
 
 impl Entry {
+    /// Create a new `Entry`.
+    ///
     /// Like hash_new() in Edax
     fn new(date: u8, args: &StoreArgs) -> Self {
         Self {
@@ -156,6 +183,8 @@ impl Entry {
         }
     }
 
+    /// Update the entry with new evaluation data.
+    ///
     /// Like hash_update() in Edax
     fn update(&mut self, date: u8, args: &StoreArgs) -> bool {
         if self.position != *args.position {
@@ -182,6 +211,7 @@ impl Entry {
 type Bucket = [Entry; BUCKET_SIZE];
 
 /// Read-only guard for accessing hash table entries
+// TODO this is unused, remove.
 pub struct ReadGuard<'a> {
     entries: std::sync::RwLockReadGuard<'a, Bucket>,
     idx: usize,
@@ -196,6 +226,7 @@ impl Deref for ReadGuard<'_> {
 }
 
 /// Write guard for modifying hash table entries
+// TODO this is unused, remove.
 pub struct WriteGuard<'a> {
     entries: std::sync::RwLockWriteGuard<'a, Bucket>,
     idx: usize,
@@ -217,14 +248,29 @@ impl DerefMut for WriteGuard<'_> {
 
 /// Arguments for storing position data in the hash table
 pub struct StoreArgs<'a> {
+    /// The position being searched
     pub position: &'a Position,
+
+    /// Depth of the search
     pub depth: i32,
+
+    /// Selectivity level
     pub selectivity: i32,
+
+    /// Log2 of the cost of the search
     pub cost: i32,
-    pub alpha: i32, // Lower bound for alpha-beta search
-    pub beta: i32,  // Upper bound for alpha-beta search
-    pub score: i32, // Evaluation score for the position
-    pub move_: i32, // Best move found so far
+
+    /// Lower bound for alpha-beta search
+    pub alpha: i32,
+
+    /// Upper bound for alpha-beta search
+    pub beta: i32,
+
+    /// Evaluation score for the position
+    pub score: i32,
+
+    /// Best move found so far
+    pub move_: i32,
 }
 
 /// Thread-safe hash table implementation for storing position evaluations
@@ -233,14 +279,19 @@ pub struct StoreArgs<'a> {
 /// Each bucket contains BUCKET_SIZE entries that are protected by RwLocks
 /// for concurrent access.
 pub struct HashTable {
+    /// Buckets for storing entries
     buckets: Box<[RwLock<Bucket>]>,
+
+    /// Mask for indexing into buckets
     mask: usize,
+
+    /// Atomic counter for date updates
     date: AtomicU8,
 }
 
 /// Like HashTable in Edax
 impl HashTable {
-    /// Creates a new hash table with the specified size (rounded up to next power of 2)
+    /// Creates a new hash table with the specified size (rounded up to next power of 2).
     pub fn new(size: usize) -> Self {
         // Round up to power of 2
         let size = size.next_power_of_two();
@@ -259,7 +310,7 @@ impl HashTable {
         }
     }
 
-    /// Calculates the bucket index for a given position
+    /// Calculate the bucket index for a given position.
     fn get_bucket_index(&self, position: &Position) -> usize {
         let mut hasher = DefaultHasher::new();
         position.hash(&mut hasher);
@@ -306,12 +357,15 @@ impl HashTable {
         None
     }
 
+    /// Get the cached evaluation data for a position, or default if not found.
     pub fn get_or_default(&self, position: &Position) -> HashData {
         self.get(position).unwrap_or_default()
     }
 
     /// Completely clears the hash table by resetting all entries
     pub fn cleanup(&self) {
+        // TODO remove, this is unused.
+
         for bucket in self.buckets.iter() {
             let mut entries = bucket.write().unwrap();
             *entries = [Entry::default(); BUCKET_SIZE];
@@ -328,6 +382,8 @@ impl HashTable {
     ///
     /// Like hash_clear() in Edax
     pub fn clear(&self) {
+        // TODO rename to soft_clear
+
         let current_date = self.date.load(Ordering::Relaxed);
         if current_date == 255 {
             // Reset all entries

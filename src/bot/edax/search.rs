@@ -25,6 +25,8 @@ use super::r#const::{Stop, LEVEL};
 use super::r#move::Move;
 use super::search_state::SearchState;
 
+/// Results of a search.
+///
 /// Like Result in Edax
 #[derive(Clone)]
 pub struct SearchResult {
@@ -80,7 +82,9 @@ impl Default for SearchResult {
     }
 }
 
-// Like unnamed struct field `options` of Search in Edax, does not change during search
+/// Options for a search, does not change during search.
+///
+/// Like unnamed struct field `options` of Search in Edax,
 pub struct SerachOptions {
     /// Requested depth of search
     depth: i32,
@@ -95,6 +99,8 @@ pub struct SerachOptions {
     multipv_depth: i32,
 }
 
+/// Time spent searching.
+///
 /// Like unnamed struct field `time` of Search in Edax
 pub struct SearchTime {
     /// Time spent thinking in milliseconds
@@ -108,6 +114,7 @@ impl Default for SearchTime {
 }
 
 impl SearchTime {
+    /// Create a new search time.
     fn new() -> Self {
         let now = -Search::clock();
 
@@ -118,6 +125,9 @@ impl SearchTime {
     }
 }
 
+/// Score bounds for a move.
+///
+/// Like Bound in Edax
 #[derive(Default, Copy, Clone)]
 pub struct Bound {
     /// Lower bound
@@ -127,6 +137,8 @@ pub struct Bound {
     pub upper: i32,
 }
 
+/// Principal variation line.
+///
 /// Like Line in Edax
 #[derive(Clone)]
 pub struct Line {
@@ -136,10 +148,12 @@ pub struct Line {
 }
 
 impl Line {
+    /// Create a new line.
     fn new() -> Self {
         Self { moves: Vec::new() }
     }
 
+    /// Push a move to the line.
     fn push(&mut self, x: u8) {
         self.moves.push(x);
     }
@@ -179,6 +193,9 @@ impl SearchConfig {
     }
 }
 
+/// Search fields that are shared between threads.
+///
+/// Like unnamed struct field `shared` of Search in Edax
 pub struct Shared {
     /// Stop condition
     pub stop: AtomicU8,
@@ -198,6 +215,17 @@ pub struct Shared {
     // master: Option<Arc<SharedSearchState>>,
 }
 
+/// A game tree search implementation based on Edax's search algorithm.
+///
+/// This implements negamax search with:
+/// - Principal Variation Search (PVS)
+/// - Null Window Search (NWS)
+/// - Transposition tables
+/// - Move ordering
+/// - Selective search
+/// - Stability cutoffs
+/// - Endgame solving
+///
 /// Like Search in Edax
 pub struct Search {
     /// Color of player to move
@@ -228,7 +256,6 @@ pub struct Search {
     pub node_type: [NodeType; 80],
 }
 
-/// Like Search in Edax
 impl Search {
     /// Like search_init() in Edax, but also does the following:
     /// - sets `player` and `position` like search_set_board() in Edax
@@ -256,10 +283,13 @@ impl Search {
         }
     }
 
+    /// Check if the search is running.
     fn is_running(&self) -> bool {
         self.shared.stop.load(Ordering::Relaxed) == Stop::Running as u8
     }
 
+    /// Get current time in milliseconds since the Unix epoch.
+    ///
     /// Like search_clock() in Edax
     fn clock() -> i64 {
         SystemTime::now()
@@ -268,6 +298,8 @@ impl Search {
             .as_millis() as i64
     }
 
+    /// Count nodes searched.
+    ///
     /// Like search_count_nodes() in Edax
     fn count_nodes(&self) -> u64 {
         self.shared.n_nodes.load(Ordering::Relaxed)
@@ -279,6 +311,8 @@ impl Search {
         // TODO #8 Add stats when we do parallel searches
     }
 
+    /// Start a search.
+    ///
     /// Like search_run() in Edax
     pub fn run(&mut self) -> SearchResult {
         self.shared
@@ -400,6 +434,8 @@ impl Search {
         unreachable!() // We don't support this.
     }
 
+    /// Get time spent searching.
+    ///
     /// Like search_time() in Edax
     fn get_time_spent(&self) -> i64 {
         if self.shared.stop.load(Ordering::Relaxed) != Stop::StopEnd as u8 {
@@ -409,6 +445,8 @@ impl Search {
         }
     }
 
+    /// Record the best move to Result, hash tables and update bounds.
+    ///
     /// Like record_best_move() in Edax
     pub fn record_best_move(
         &self,
@@ -517,6 +555,9 @@ impl Search {
         result.n_nodes = self.count_nodes();
     }
 
+    /// Evaluate move list using hash data.
+    /// This is used in preparation for sorting.
+    ///
     /// Like movelist_evaluate() in Edax
     fn evaluate_movelist(
         &mut self,
@@ -651,6 +692,8 @@ impl Search {
         score
     }
 
+    /// Principal Variation Search at shallow depth.
+    ///
     /// Like PVS_shallow() in Edax
     fn pvs_shallow(&mut self, alpha: i32, mut beta: i32, depth: i32) -> i32 {
         let mut cost = -(self.shared.n_nodes.load(Ordering::Relaxed) as i64);
@@ -732,7 +775,9 @@ impl Search {
         bestscore
     }
 
-    // Like NWS_shallow() in Edax
+    /// Null Window Search at shallow depth.
+    ///
+    /// Like NWS_shallow() in Edax
     fn nws_shallow<const USE_SHALLOW_TABLE: bool>(&mut self, alpha: i32, depth: i32) -> i32 {
         let selectivity = self.config.selectivity;
 
@@ -835,6 +880,8 @@ impl Search {
         self.nws_shallow::<false>(alpha, depth)
     }
 
+    /// Transposition cutoff for Null Window Search.
+    ///
     /// Like search_TC_NWS() in Edax
     fn transposition_cutoff_nws(
         hash_data: &HashData,
@@ -854,12 +901,16 @@ impl Search {
         None
     }
 
+    /// Check if the search should continue.
+    ///
     /// Like search_continue() in Edax
     fn continue_search(&self) -> bool {
         // TODO #14 when we support time management, we need to check if we have time left
         self.is_running()
     }
 
+    /// Iterative deepening search.
+    ///
     /// Like iterative_deepening() in Edax
     fn iterative_deepening(&mut self, alpha: i32, beta: i32) {
         let mut result = self.result.lock().unwrap();
@@ -1062,6 +1113,8 @@ impl Search {
         }
     }
 
+    /// Aspiration search.
+    ///
     /// Like aspiration_search() in Edax
     fn aspiration_search(
         &mut self,
@@ -1196,6 +1249,8 @@ impl Search {
         score
     }
 
+    /// Check if the search is at a depth that should be solved.
+    ///
     /// Like is_depth_solving() in Edax
     fn is_depth_solving(depth: i32, n_empties: i32) -> bool {
         (depth >= n_empties)
@@ -1205,6 +1260,8 @@ impl Search {
             || (depth > 24 && depth + 14 >= n_empties)
     }
 
+    /// Check if the principal variation is ok.
+    ///
     /// Like is_pv_ok() in Edax
     fn is_pv_ok(&self, bestmove: i32, mut depth: i32) -> bool {
         let mut position = *self.state.position();
@@ -1245,6 +1302,8 @@ impl Search {
         true
     }
 
+    /// Principal Variation Search at root.
+    ///
     /// Like PVS_root() in Edax
     fn pvs_root(&mut self, alpha: i32, beta: i32, depth: i32) -> i32 {
         let mut cost = -(self.count_nodes() as i64);
@@ -1381,6 +1440,8 @@ impl Search {
         node.best_score()
     }
 
+    /// Get final score for the position.
+    ///
     /// Like search_solve() in Edax
     fn solve(&self) -> i32 {
         self.state
@@ -1388,6 +1449,8 @@ impl Search {
             .final_score_with_empty(self.state.n_empties())
     }
 
+    /// Find out which tree search function to use and call it.
+    ///
     /// Like search_route_PVS() in Edax
     fn route_pvs(&mut self, alpha: i32, beta: i32, depth: i32, node: Option<Arc<Node>>) -> i32 {
         let score = if depth == self.state.n_empties() {
@@ -1409,6 +1472,8 @@ impl Search {
         -self.state.bound(-score)
     }
 
+    /// Get cost of the principal variation.
+    ///
     /// Like search_get_pv_cost() in Edax
     fn get_pv_cost(&self) -> i32 {
         let position = self.state.position();
@@ -1426,6 +1491,8 @@ impl Search {
         }
     }
 
+    /// Principal Variation Search at midgame depth.
+    ///
     /// Like PVS_midgame() in Edax
     fn pvs_midgame(&mut self, alpha: i32, beta: i32, depth: i32, parent: Option<Arc<Node>>) -> i32 {
         if !self.is_running() {
@@ -1552,6 +1619,8 @@ impl Search {
         node.best_score()
     }
 
+    /// Null Window Search at midgame depth.
+    ///
     /// Like NWS_midgame() in Edax
     fn nws_midgame(&mut self, alpha: i32, depth: i32, parent: Option<Arc<Node>>) -> i32 {
         let beta = alpha + 1;
@@ -1622,7 +1691,7 @@ impl Search {
                 Move::new_pass_with_score(score)
             } else {
                 let score = self.solve();
-                Move::new_no_move(score)
+                Move::new_no_move_with_score(score)
             };
 
             node.set_move_list(MoveList::new_one_move(move_));
@@ -1701,6 +1770,8 @@ impl Search {
         node.best_score()
     }
 
+    /// Probcut search.
+    ///
     /// Like search_probcut() in Edax
     fn probcut(&mut self, alpha: i32, depth: i32, parent: Option<Arc<Node>>) -> Option<i32> {
         // Edax also `checks depth >= options.probcut_d` where the latter is a double with value `0.25`.
@@ -1758,12 +1829,16 @@ impl Search {
         None
     }
 
+    /// Update config for probcut search.
+    ///
     /// Like search_update_probcut() in Edax
     fn update_probcut(&mut self, node_type: NodeType) {
         self.node_type[self.state.height() as usize] = node_type;
         self.state.set_probcut_level(self.state.probcut_level() + 1);
     }
 
+    /// Restore config for probcut search.
+    ///
     /// Like search_restore_probcut() in Edax
     fn restore_probcut(&mut self, node_type: NodeType, selectivity: i32) {
         // This argument is not used in Edax with default configuration.
@@ -1773,6 +1848,8 @@ impl Search {
         self.state.set_probcut_level(self.state.probcut_level() - 1);
     }
 
+    /// Enhanced Transposition Cutoff Null Window Search.
+    ///
     /// Like search_ETC_NWS() in Edax
     fn etc_nws(
         &mut self,
@@ -1832,6 +1909,8 @@ impl Search {
         None
     }
 
+    /// Null Window Search at endgame depth.
+    ///
     /// Like NWS_endgame() in Edax
     fn nws_endgame(&mut self, alpha: i32) -> i32 {
         let beta = alpha + 1;
@@ -1871,14 +1950,14 @@ impl Search {
 
         let best_move = if move_list.is_empty() {
             if self.state.position().opponent_has_moves() {
-                self.state.update_pass_midgame();
+                self.state.update_pass_midgame(); // TODO should pass endgame here?
                 let score = -self.nws_endgame(-beta);
                 self.state.restore_pass_midgame();
 
                 Move::new_pass_with_score(score)
             } else {
                 let score = self.solve();
-                Move::new_no_move(score)
+                Move::new_no_move_with_score(score)
             }
         } else {
             Self::evaluate_movelist(self, &move_list, &hash_data, alpha, 0);
@@ -1921,6 +2000,8 @@ impl Search {
         alpha
     }
 
+    /// Null Window Search to find exact score.
+    ///
     /// Like search_shallow() in Edax
     fn endgame_shallow(&mut self, alpha: i32) -> i32 {
         let beta = alpha + 1;
@@ -1992,7 +2073,9 @@ impl Search {
         best_score
     }
 
-    // Like search_solve_4() in Edax
+    /// Compute score for a position with 4 empty squares.
+    ///
+    /// Like search_solve_4() in Edax
     fn solve_4(&mut self, alpha: i32) -> i32 {
         let beta = alpha + 1;
 
@@ -2107,7 +2190,9 @@ impl Search {
         best_score
     }
 
-    // Like search_solve_3() in Edax
+    /// Compute score for a position with 3 empty squares.
+    ///
+    /// Like search_solve_3() in Edax
     fn solve_3(&mut self, alpha: i32) -> i32 {
         let beta = alpha + 1;
 
@@ -2207,6 +2292,8 @@ impl Search {
         best_score
     }
 
+    /// Compute score for a position with 2 empty squares.
+    ///
     /// Like search_solve_2() in Edax
     fn solve_2(position: &Position, alpha: i32, x1: usize, x2: usize) -> i32 {
         let beta = alpha + 1;
@@ -2260,6 +2347,8 @@ impl Search {
         best_score
     }
 
+    /// Compute score for a position with 1 empty square.
+    ///
     /// Like search_solve_1() in Edax
     fn solve_1(position: &Position, beta: i32, x: usize) -> i32 {
         let mut score = 2 * position.opponent.count_ones() as i32 - SCORE_MAX;

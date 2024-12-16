@@ -1,3 +1,8 @@
+/// Compute flipped discs when moving to a given square.
+///
+/// `player` is the bitboard of the player's discs.
+/// `opponent` is the bitboard of the opponent's discs.
+/// `index` is the index of the square of the move
 pub fn get_flipped_simple(player: u64, opponent: u64, index: usize) -> u64 {
     let move_x = index % 8;
     let move_y = index / 8;

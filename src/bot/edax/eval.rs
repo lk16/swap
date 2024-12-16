@@ -12,6 +12,7 @@ use super::{
 pub const EVAL_N_FEATURES: usize = 47;
 
 lazy_static! {
+    /// Table that maps features to its squares.
     pub static ref EVAL_F2X: [Vec<usize>; EVAL_N_FEATURES] = [
         /* 0 */ vec![A1, B1, A2, B2, C1, A3, C2, B3, C3],
         /* 1 */ vec![H1, G1, H2, G2, F1, H3, F2, G3, F3],
@@ -63,8 +64,9 @@ lazy_static! {
     ];
 }
 
-// array to convert coordinates into feature
 lazy_static! {
+    /// Table that maps coordinates to features.
+    /// The values in the tuples are (feature index, feature value).
     pub static ref EVAL_X2F: [Vec<(usize, i32)>; 65] = [
         /* a1 */ vec![(0, 6561), (4, 243), (8, 6561), (10, 6561), (12, 19683), (14, 19683), (28, 2187)],
         /* b1 */ vec![(0, 2187), (4, 27), (8, 2187), (18, 2187), (30, 729)],
@@ -134,7 +136,7 @@ lazy_static! {
     ];
 }
 
-/// feature offset
+/// Offset per feature.
 pub const EVAL_OFFSET: [i32; EVAL_N_FEATURES] = [
     0, 0, 0, 0, 19683, 19683, 19683, 19683, 78732, 78732, 78732, 78732, 137781, 137781, 137781,
     137781, 196830, 196830, 196830, 196830, 203391, 203391, 203391, 203391, 209952, 209952, 209952,
@@ -155,6 +157,23 @@ const DO_MOVE_FUNCTIONS: [fn(&mut Eval, usize, u64); 2] =
 const UNDO_MOVE_FUNCTIONS: [fn(&mut Eval, usize, u64); 2] =
     [Eval::undo_move_player, Eval::undo_move_opponent];
 
+/// Represents the evaluation of a position using pattern-based features and pre-computed weights.
+/// This evaluation is used only for midgame search.
+///
+/// This struct maintains the state needed to evaluate an Othello position but does not store the
+/// Position itself. Instead, Position and Eval are stored together in GameState and
+/// kept in sync during midgame search.
+///
+/// The evaluation uses a set of pattern-based features (stored in `features`) combined with
+/// pre-computed weights to create a strong heuristic evaluation. When moves are made or unmade,
+/// the features are incrementally updated rather than recomputed from scratch for efficiency.
+///
+/// # Performance
+/// Incrementally updating features when doing/undoing moves is much more efficient than
+/// recomputing the entire evaluation from the Position. This is critical for fast search
+/// performance since evaluation happens frequently during game tree traversal.
+///
+/// All fields are private to prevent breaking invariants.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Eval {
     /// The features of the position
@@ -174,6 +193,7 @@ impl Default for Eval {
 }
 
 impl Eval {
+    /// Create a new `Eval` struct for a `Position`.
     pub fn new(position: &Position) -> Self {
         let mut eval = Self {
             features: [0; EVAL_N_FEATURES],
@@ -184,7 +204,7 @@ impl Eval {
         for i in 0..EVAL_N_FEATURES {
             eval.features[i] = 0;
 
-            // construct base-3 value: 0 is player, 1 is opponent, 2 is empty
+            // construct base-3 value for feature
             for j in 0..EVAL_F2X[i].len() {
                 let c = position.get_square_color(EVAL_F2X[i][j]) as i32;
                 eval.features[i] = eval.features[i] * 3 + c;
@@ -197,6 +217,7 @@ impl Eval {
         eval
     }
 
+    /// Swap the player to evaluate from.
     fn swap(&mut self) {
         self.player = 1 - self.player;
     }
@@ -234,6 +255,7 @@ impl Eval {
         }
     }
 
+    /// Update features when doing a move for the player.
     fn do_move_player(&mut self, move_pos: usize, flipped: u64) {
         // Place player's disc on an empty square
         // In base-3: empty (2) -> player (0) requires -2
@@ -244,6 +266,7 @@ impl Eval {
         self.update_features::<-2, -1>(move_pos, flipped);
     }
 
+    /// Update features when doing a move for the opponent.
     fn do_move_opponent(&mut self, move_pos: usize, flipped: u64) {
         // Place opponent's disc on an empty square
         // In base-3: empty (2) -> opponent (1) requires -1
@@ -254,12 +277,15 @@ impl Eval {
         self.update_features::<-1, 1>(move_pos, flipped);
     }
 
+    /// Update Eval to reflect doing a move.
+    /// This is much more efficient than rebuilding an Eval from scratch.
     pub fn do_move(&mut self, index: usize, flipped: u64) {
         DO_MOVE_FUNCTIONS[self.player as usize](self, index, flipped);
         self.empty_index += 1;
         self.swap();
     }
 
+    /// Update Eval to reflect undoing a move.
     fn undo_move_player(&mut self, move_pos: usize, flipped: u64) {
         // Restore empty square from player's disc
         // In base-3: player (0) -> empty (2) requires +2
@@ -270,6 +296,7 @@ impl Eval {
         self.update_features::<2, 1>(move_pos, flipped);
     }
 
+    /// Update Eval to reflect undoing a move for the opponent.
     fn undo_move_opponent(&mut self, move_pos: usize, flipped: u64) {
         // Restore empty square from opponent's disc
         // In base-3: opponent (1) -> empty (2) requires +1
@@ -280,16 +307,19 @@ impl Eval {
         self.update_features::<1, -1>(move_pos, flipped);
     }
 
+    /// Update Eval to reflect undoing a move.
     pub fn undo_move(&mut self, index: usize, flipped: u64) {
         self.swap();
         UNDO_MOVE_FUNCTIONS[self.player as usize](self, index, flipped);
         self.empty_index -= 1;
     }
 
+    /// Update Eval to reflect passing.
     pub fn pass(&mut self) {
         self.swap();
     }
 
+    /// Compute error value of the evaluation function.
     pub fn sigma(n_empty: i32, depth: i32, probcut_depth: i32) -> f64 {
         let sigma = -0.10026799 * n_empty as f64
             + 0.31027733 * depth as f64
@@ -298,6 +328,7 @@ impl Eval {
         0.07585621 * sigma * sigma + 1.16492647 * sigma + 5.4171698
     }
 
+    /// Compute the heuristic for the board we're currently evaluating.
     pub fn heuristic(&self) -> i32 {
         let player_index = self.player as usize;
         let empty_index = self.empty_index;
@@ -324,10 +355,15 @@ impl Eval {
         score
     }
 
+    /// Get the features of the current evaluation.
     pub fn features(&self) -> &[i32; EVAL_N_FEATURES] {
         &self.features
     }
 
+    /// Get whose turn it is in the position we're evaluating.
+    ///
+    /// 0 is the player to move when the Eval initially was created.
+    /// 1 is the opponent.
     pub fn player(&self) -> i32 {
         self.player
     }

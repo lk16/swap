@@ -1,15 +1,18 @@
 use std::fmt::{self, Display};
 use std::time::Duration;
 
+use crate::frontend::game::Game;
 use crate::othello::board::{Board, BLACK, WHITE};
-use crate::othello::game::Game;
 use axum::extract::ws::{Message, WebSocket};
 use futures::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
 use serde_json::Value;
+use tokio::time::sleep;
+use HandlerError::*;
 
+/// Errors that can occur when handling messages from the client.
 enum HandlerError {
     WebSocketError(axum::Error),
     UnexpectedMessage(Message),
@@ -21,8 +24,7 @@ enum HandlerError {
     UnknownCommand((String, String)),
 }
 
-use tokio::time::sleep;
-use HandlerError::*;
+// TODO #16 Use JSON models and add tests for code in this file
 
 impl Display for HandlerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -47,6 +49,7 @@ impl Display for HandlerError {
     }
 }
 
+/// Maintains game state for a single client.
 struct GameSession {
     ws_sender: SplitSink<WebSocket, Message>,
     ws_receiver: SplitStream<WebSocket>,
@@ -54,6 +57,7 @@ struct GameSession {
 }
 
 impl GameSession {
+    /// Create a new game session.
     fn new(ws_sender: SplitSink<WebSocket, Message>, ws_receiver: SplitStream<WebSocket>) -> Self {
         Self {
             ws_sender,
@@ -62,6 +66,7 @@ impl GameSession {
         }
     }
 
+    /// Run the game session
     async fn run(&mut self) -> Result<(), axum::Error> {
         self.send_current_board().await?;
 
@@ -77,11 +82,13 @@ impl GameSession {
         Ok(())
     }
 
+    /// Send the current board to the client.
     async fn send_current_board(&mut self) -> Result<(), axum::Error> {
         let message = self.current_board().as_ws_message();
         self.ws_sender.send(Message::Text(message)).await
     }
 
+    /// Handles any message from the client.
     async fn handle_message(
         &mut self,
         msg: Result<Message, axum::Error>,
@@ -114,6 +121,7 @@ impl GameSession {
         }
     }
 
+    /// Handles the undo message from the client.
     async fn handle_undo(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
         if self.game.undo() {
             self.send_current_board().await.map_err(WebSocketError)?;
@@ -122,6 +130,7 @@ impl GameSession {
         Ok(())
     }
 
+    /// Handles the redo message from the client.
     async fn handle_redo(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
         if self.game.redo() {
             self.send_current_board().await.map_err(WebSocketError)?;
@@ -130,6 +139,7 @@ impl GameSession {
         Ok(())
     }
 
+    /// Handles the human move message from the client.
     async fn handle_human_move(
         &mut self,
         (key, value): (&String, &Value),
@@ -157,18 +167,21 @@ impl GameSession {
         self.do_bot_move().await
     }
 
+    /// Handles message from the client to start a new game.
     async fn handle_new_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
         self.game.reset(Board::new());
         self.send_current_board().await.map_err(WebSocketError)?;
         self.do_bot_move().await
     }
 
+    /// Handles message from the client to start a new XOT game.
     async fn handle_xot_game(&mut self, _: (&String, &Value)) -> Result<(), HandlerError> {
         self.game.reset(Board::new_xot());
         self.send_current_board().await.map_err(WebSocketError)?;
         self.do_bot_move().await
     }
 
+    /// Handles message from the client to set the black player.
     async fn handle_set_black_player(
         &mut self,
         args: (&String, &Value),
@@ -178,6 +191,7 @@ impl GameSession {
         self.do_bot_move().await
     }
 
+    /// Handles message from the client to set the white player.
     async fn handle_set_white_player(
         &mut self,
         args: (&String, &Value),
@@ -187,6 +201,7 @@ impl GameSession {
         self.do_bot_move().await
     }
 
+    /// Computes zero or more bot moves and sends an update to the client for each move done.
     async fn do_bot_move(&mut self) -> Result<(), HandlerError> {
         loop {
             let board = *self.current_board();
@@ -204,15 +219,19 @@ impl GameSession {
 
             self.send_current_board().await.map_err(WebSocketError)?;
 
+            // If multiple moves are done by a bot in quick succession,
+            // the user may not see the intermediate board states or follow what happened.
             sleep(Duration::from_millis(100)).await;
         }
     }
 
+    /// Shorthand for getting the current board
     fn current_board(&self) -> &Board {
         self.game.current_board()
     }
 }
 
+/// Handle a WebSocket connection.
 pub async fn handle_socket(socket: WebSocket) {
     // split socket to facilitate testing
     let (ws_sender, ws_receiver) = socket.split();

@@ -4,13 +4,18 @@ pub const BLACK: i32 = 0;
 pub const WHITE: i32 = 1;
 pub const EMPTY: i32 = 2;
 
+/// Used in LEVEL table.
 #[derive(Clone, Copy)]
 pub struct Level {
+    /// Search depth
     pub depth: i32,
+
+    /// Selectivity level
     pub selectivity: i32,
 }
 
 lazy_static! {
+    /// Table that maps engine level and number of empties to search depth and selectivity.
     pub static ref LEVEL: [[Level; 61]; 61] = {
         let mut level_array = [[Level {
             depth: 0,
@@ -236,7 +241,7 @@ lazy_static! {
     };
 }
 
-/// Represents different states that can stop or interrupt a search
+/// Indicates if a search thread is running, has finished or should stop.
 ///
 /// Like Stop in Edax
 #[repr(u8)]
@@ -261,6 +266,7 @@ pub enum Stop {
 }
 
 impl Stop {
+    /// Check if the search is running.
     pub fn is_running(&self) -> bool {
         matches!(self, Stop::Running)
     }
@@ -269,6 +275,7 @@ impl Stop {
 /// Number of moves in game including passing moves.
 pub const GAME_SIZE: usize = 80;
 
+/// Indicates the type of node in a search tree.
 #[repr(u8)]
 #[derive(Default, Copy, Clone)]
 pub enum NodeType {
@@ -287,7 +294,7 @@ pub const SCORE_MAX: i32 = 64;
 /// Infinity score
 pub const SCORE_INF: i32 = 127;
 
-/** Selectivity probcut */
+/// Used in SELECTIVITY_TABLE.
 pub struct Selectivity {
     /// Selectivity value
     pub t: f64,
@@ -299,6 +306,7 @@ pub struct Selectivity {
     pub percent: i32,
 }
 
+/// Table that maps selectivity value to search depth and selectivity.
 #[rustfmt::skip]
 pub const SELECTIVITY_TABLE: [Selectivity; 6] = [
     Selectivity { t: 1.1, level: 0, percent: 73 }, // strong selectivity
@@ -324,31 +332,33 @@ pub const ITERATIVE_MIN_EMPTIES: i32 = 10;
 /// while ensuring we don't miss potentially good moves that are just slightly below alpha.
 pub const SORT_ALPHA_DELTA: i32 = 8;
 
-/** threshold values to try stability cutoff during PVS search */
+/// Threshold values to try stability cutoff during PVS search.
+/// 99 means unused value.
 #[rustfmt::skip]
-pub const PVS_STABILITY_THRESHOLD: [i32; 56] = [ // 99 = unused value...
+pub const PVS_STABILITY_THRESHOLD: [i32; 56] = [
     99, 99, 99, 99, -2,  0,  2,  4,
      6,  8, 12, 14, 16, 18, 20, 22,
     24, 26, 28, 30, 32, 34, 36, 38,
     40, 40, 42, 42, 44, 44, 46, 46,
     48, 48, 50, 50, 52, 52, 54, 54,
     56, 56, 58, 58, 60, 60, 62, 62,
-    99, 99, 99, 99, 99, 99, 99, 99, // no stable square at those depths
+    99, 99, 99, 99, 99, 99, 99, 99,
 ];
 
-/** threshold values to try stability cutoff during NWS search */
+/// Threshold values to try stability cutoff during NWS search.
+/// 99 means unused value.
 #[rustfmt::skip]
-pub const NWS_STABILITY_THRESHOLD: [i32; 56] = [ // 99 = unused value...
+pub const NWS_STABILITY_THRESHOLD: [i32; 56] = [
     99, 99, 99, 99,  6,  8, 10, 12,
     14, 16, 20, 22, 24, 26, 28, 30,
     32, 34, 36, 38, 40, 42, 44, 46,
     48, 48, 50, 50, 52, 52, 54, 54,
     56, 56, 58, 58, 60, 60, 62, 62,
     64, 64, 64, 64, 64, 64, 64, 64,
-    99, 99, 99, 99, 99, 99, 99, 99, // no stable square at those depths
+    99, 99, 99, 99, 99, 99, 99, 99,
 ];
 
-/** Switch from midgame to endgame search (faster but less node efficient) at this depth. */
+/// Switch from midgame to endgame search (faster but less node efficient) at this depth.
 pub const DEPTH_MIDGAME_TO_ENDGAME: i32 = 15;
 
 /// Increased sort depth for move sorting
@@ -369,7 +379,7 @@ pub const ETC_MIN_DEPTH: i32 = 5;
 /// Switch from endgame to shallow search (faster but less node efficient) at this depth.
 pub const DEPTH_TO_SHALLOW_SEARCH: i32 = 7;
 
-/** Conversion array: neighbour bits */
+/// Conversion array: neighbour bits.
 #[rustfmt::skip]
 pub const NEIGHBOUR: [u64; 66] = [
 	0x0000000000000302, 0x0000000000000705, 0x0000000000000e0a, 0x0000000000001c14,
@@ -388,5 +398,5 @@ pub const NEIGHBOUR: [u64; 66] = [
 	0x3828380000000000, 0x7050700000000000, 0xe0a0e00000000000, 0xc040c00000000000,
 	0x0203000000000000, 0x0507000000000000, 0x0a0e000000000000, 0x141c000000000000,
 	0x2838000000000000, 0x5070000000000000, 0xa0e0000000000000, 0x40c0000000000000,
-	0, 0, // <- hack for passing move & nomove
+	0, 0,
 ];

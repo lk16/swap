@@ -1,4 +1,36 @@
-/** precomputed count flip array */
+/// Count how many discs are flipped by playing the last empty square on the board.
+/// This is used for endgame evaluation.
+///
+/// `index` is the index of the last empty square on the board.
+/// `player` is the bitset of the player's discs.
+///
+/// Like count_last_flip() in Edax.
+pub fn count_last_flip(index: usize, player: u64) -> usize {
+    COUNT_LAST_FLIP[index](player)
+}
+
+type CountLastFlipFn = fn(u64) -> usize;
+
+#[rustfmt::skip]
+static COUNT_LAST_FLIP: [CountLastFlipFn; 64] = [
+	count_last_flip_a1, count_last_flip_b1, count_last_flip_c1, count_last_flip_d1,
+	count_last_flip_e1, count_last_flip_f1, count_last_flip_g1, count_last_flip_h1,
+	count_last_flip_a2, count_last_flip_b2, count_last_flip_c2, count_last_flip_d2,
+	count_last_flip_e2, count_last_flip_f2, count_last_flip_g2, count_last_flip_h2,
+	count_last_flip_a3, count_last_flip_b3, count_last_flip_c3, count_last_flip_d3,
+	count_last_flip_e3, count_last_flip_f3, count_last_flip_g3, count_last_flip_h3,
+	count_last_flip_a4, count_last_flip_b4, count_last_flip_c4, count_last_flip_d4,
+	count_last_flip_e4, count_last_flip_f4, count_last_flip_g4, count_last_flip_h4,
+	count_last_flip_a5, count_last_flip_b5, count_last_flip_c5, count_last_flip_d5,
+	count_last_flip_e5, count_last_flip_f5, count_last_flip_g5, count_last_flip_h5,
+	count_last_flip_a6, count_last_flip_b6, count_last_flip_c6, count_last_flip_d6,
+	count_last_flip_e6, count_last_flip_f6, count_last_flip_g6, count_last_flip_h6,
+	count_last_flip_a7, count_last_flip_b7, count_last_flip_c7, count_last_flip_d7,
+	count_last_flip_e7, count_last_flip_f7, count_last_flip_g7, count_last_flip_h7,
+	count_last_flip_a8, count_last_flip_b8, count_last_flip_c8, count_last_flip_d8,
+	count_last_flip_e8, count_last_flip_f8, count_last_flip_g8, count_last_flip_h8,
+];
+
 #[rustfmt::skip]
 const COUNT_FLIP_R: [u8; 128] = [
     0,  0,  2,  0,  4,  0,  2,  0,  6,  0,  2,  0,  4,  0,  2,  0,
@@ -825,32 +857,6 @@ fn count_last_flip_h8(p: u64) -> usize {
     n_flipped += count_v_flip_reverse(p & 0x0040201008040201, 9);
 
     n_flipped
-}
-
-type CountLastFlipFn = fn(u64) -> usize;
-
-#[rustfmt::skip]
-static COUNT_LAST_FLIP: [CountLastFlipFn; 64] = [
-	count_last_flip_a1, count_last_flip_b1, count_last_flip_c1, count_last_flip_d1,
-	count_last_flip_e1, count_last_flip_f1, count_last_flip_g1, count_last_flip_h1,
-	count_last_flip_a2, count_last_flip_b2, count_last_flip_c2, count_last_flip_d2,
-	count_last_flip_e2, count_last_flip_f2, count_last_flip_g2, count_last_flip_h2,
-	count_last_flip_a3, count_last_flip_b3, count_last_flip_c3, count_last_flip_d3,
-	count_last_flip_e3, count_last_flip_f3, count_last_flip_g3, count_last_flip_h3,
-	count_last_flip_a4, count_last_flip_b4, count_last_flip_c4, count_last_flip_d4,
-	count_last_flip_e4, count_last_flip_f4, count_last_flip_g4, count_last_flip_h4,
-	count_last_flip_a5, count_last_flip_b5, count_last_flip_c5, count_last_flip_d5,
-	count_last_flip_e5, count_last_flip_f5, count_last_flip_g5, count_last_flip_h5,
-	count_last_flip_a6, count_last_flip_b6, count_last_flip_c6, count_last_flip_d6,
-	count_last_flip_e6, count_last_flip_f6, count_last_flip_g6, count_last_flip_h6,
-	count_last_flip_a7, count_last_flip_b7, count_last_flip_c7, count_last_flip_d7,
-	count_last_flip_e7, count_last_flip_f7, count_last_flip_g7, count_last_flip_h7,
-	count_last_flip_a8, count_last_flip_b8, count_last_flip_c8, count_last_flip_d8,
-	count_last_flip_e8, count_last_flip_f8, count_last_flip_g8, count_last_flip_h8,
-];
-
-pub fn count_last_flip(index: usize, player: u64) -> usize {
-    COUNT_LAST_FLIP[index](player)
 }
 
 #[cfg(test)]

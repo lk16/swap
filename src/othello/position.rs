@@ -12,6 +12,7 @@ use super::get_flipped::get_flipped;
 use super::get_moves;
 
 lazy_static! {
+    /// XOT positions, loaded from json file when accessed the first time.
     pub static ref XOT_POSITIONS: Vec<Position> = {
         let path = Path::new("assets/xot.json");
         let mut file = File::open(path).expect("Failed to open XOT file");
@@ -38,6 +39,7 @@ lazy_static! {
     };
 }
 
+/// Print a bitset as an ASCII art board. Useful for debugging.
 pub fn print_bitset(bitset: u64) {
     let mut output = String::new();
     output.push_str("+-A-B-C-D-E-F-G-H-+\n");
@@ -58,6 +60,8 @@ pub fn print_bitset(bitset: u64) {
     println!("{}", output);
 }
 
+/// Game state of a position.
+// TODO remove this
 #[derive(PartialEq, Debug)]
 pub enum GameState {
     HasMoves,
@@ -65,9 +69,15 @@ pub enum GameState {
     Finished,
 }
 
+/// A position in the game of Othello.
+/// This does not keep track of the player to move.
+/// It is intended to be used by bots for tree search.
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
 pub struct Position {
+    /// Bitboard of discs of the player to move.
     pub player: u64,
+
+    /// Bitboard of discs of the opponent.
     pub opponent: u64,
 }
 
@@ -84,6 +94,7 @@ impl Display for Position {
 }
 
 impl Position {
+    /// Create a new starting position.
     pub fn new() -> Self {
         Self {
             player: 0x00000000810000000,
@@ -91,15 +102,18 @@ impl Position {
         }
     }
 
+    /// Create a new random XOT position.
     pub fn new_xot() -> Self {
         let n = ThreadRng::default().next_u64() as usize;
         XOT_POSITIONS[n % XOT_POSITIONS.len()]
     }
 
+    /// Create a new position from two bitboards.
     pub fn new_from_bitboards(player: u64, opponent: u64) -> Self {
         Self { player, opponent }
     }
 
+    /// Create a new empty position.
     pub fn new_empty() -> Self {
         Self {
             player: 0,
@@ -107,6 +121,7 @@ impl Position {
         }
     }
 
+    /// Create a new random position with a given number of discs.
     pub fn new_random_with_discs(n_discs: usize) -> Self {
         assert!(
             (4..=64).contains(&n_discs),
@@ -138,6 +153,9 @@ impl Position {
         position
     }
 
+    /// Create a new position by applying a move to a position.
+    /// This is potentially more efficient than calling `do_move` because it
+    /// avoids the swap of the player and opponent bitboards.
     pub fn new_from_parent_and_move(parent: &Position, move_index: usize) -> (Self, u64) {
         let flipped = parent.get_flipped(move_index);
         let player = parent.opponent ^ flipped;
@@ -150,36 +168,43 @@ impl Position {
         (position, flipped)
     }
 
-    pub fn shift(bitboard: u64, dir: i32) -> u64 {
+    /// Shift a bitset in a given direction.
+    pub fn shift(bitset: u64, dir: i32) -> u64 {
+        // TODO move this function and its tests into get_moves.rs
         match dir {
-            -9 => (bitboard & 0xfefefefefefefefe) << 7,
-            -8 => bitboard << 8,
-            -7 => (bitboard & 0x7f7f7f7f7f7f7f7f) << 9,
-            -1 => (bitboard & 0xfefefefefefefefe) >> 1,
-            1 => (bitboard & 0x7f7f7f7f7f7f7f7f) << 1,
-            7 => (bitboard & 0x7f7f7f7f7f7f7f7f) >> 7,
-            8 => bitboard >> 8,
-            9 => (bitboard & 0xfefefefefefefefe) >> 9,
+            -9 => (bitset & 0xfefefefefefefefe) << 7,
+            -8 => bitset << 8,
+            -7 => (bitset & 0x7f7f7f7f7f7f7f7f) << 9,
+            -1 => (bitset & 0xfefefefefefefefe) >> 1,
+            1 => (bitset & 0x7f7f7f7f7f7f7f7f) << 1,
+            7 => (bitset & 0x7f7f7f7f7f7f7f7f) >> 7,
+            8 => bitset >> 8,
+            9 => (bitset & 0xfefefefefefefefe) >> 9,
             _ => panic!("Invalid direction"),
         }
     }
 
+    /// Compute bitset of valid moves for the player to move.
     pub fn get_moves(&self) -> u64 {
         get_moves::get_moves(self.player, self.opponent)
     }
 
+    /// Compute bitset of valid moves for the opponent.
     pub fn get_opponent_moves(&self) -> u64 {
         get_moves::get_moves(self.opponent, self.player)
     }
 
+    /// Check if there are any moves for the player to move.
     pub fn has_moves(&self) -> bool {
         self.get_moves() != 0
     }
 
+    /// Check if there are any moves for the opponent.
     pub fn opponent_has_moves(&self) -> bool {
         self.get_opponent_moves() != 0
     }
 
+    /// Check if a move is valid.
     pub fn is_valid_move(&self, index: usize) -> bool {
         if index >= 64 {
             return false;
@@ -192,6 +217,7 @@ impl Position {
         std::mem::swap(&mut self.player, &mut self.opponent);
     }
 
+    /// Get the game state of a position.
     pub fn game_state(&self) -> GameState {
         if self.has_moves() {
             return GameState::HasMoves;
@@ -204,6 +230,7 @@ impl Position {
         GameState::Finished
     }
 
+    /// Apply a move to the position.
     pub fn do_move(&mut self, index: usize) -> u64 {
         let flipped = self.get_flipped(index);
 
@@ -215,22 +242,26 @@ impl Position {
         flipped
     }
 
+    /// Get bitset of flipped discs for a move.
     pub fn get_flipped(&self, index: usize) -> u64 {
         get_flipped(self.player, self.opponent, index)
     }
 
+    /// Undo a move by reversing the effect of `do_move`.
     pub fn undo_move(&mut self, index: usize, flips: u64) {
         std::mem::swap(&mut self.player, &mut self.opponent);
         self.player &= !(flips | (1u64 << index));
         self.opponent |= flips;
     }
 
+    /// Create a new position by applying a move to the current position.
     pub fn do_move_cloned(&self, index: usize) -> Self {
         let mut child = *self;
         child.do_move(index);
         child
     }
 
+    /// Returns an ASCII art representation of the board.
     pub fn ascii_art(&self, turn: usize) -> String {
         let (player_char, opponent_char) = if turn == BLACK {
             ("○", "●")
@@ -262,14 +293,18 @@ impl Position {
         output
     }
 
+    /// Count the number of discs on the board.
     pub fn count_discs(&self) -> u32 {
+        // TODO binary or and count_ones once.
         self.player.count_ones() + self.opponent.count_ones()
     }
 
+    /// Count the number of empty squares on the board.
     pub fn count_empty(&self) -> u32 {
         64 - self.count_discs()
     }
 
+    /// Return iterator over move indices and resulting child positions.
     pub fn children_with_index(&self) -> Vec<(usize, Position)> {
         let moves = self.get_moves();
 
@@ -279,6 +314,7 @@ impl Position {
             .collect()
     }
 
+    /// Return iterator over child positions.
     pub fn children(&self) -> Vec<Position> {
         let moves = self.get_moves();
 
@@ -288,6 +324,7 @@ impl Position {
             .collect()
     }
 
+    /// Compute final score of a position.
     pub fn final_score(&self) -> isize {
         let player = self.player.count_ones() as isize;
         let opponent = self.opponent.count_ones() as isize;
@@ -330,21 +367,27 @@ impl Position {
         color as usize
     }
 
+    /// Return iterator over move indices.
     pub fn iter_move_indices(&self) -> MoveIndices {
         MoveIndices::new(self.get_moves())
     }
 
+    /// Count the number of stable discs for the player.
+    ///
     /// Like get_stability() in Edax
     pub fn count_player_stable_discs(&self) -> i32 {
         count_stable(self.player, self.opponent)
     }
 
-    /// Similar to get_stability() in Edax but for the opponent
+    /// Count the number of stable discs for the opponent.
     pub fn count_opponent_stable_discs(&self) -> i32 {
         count_stable(self.opponent, self.player)
     }
 
-    /// Like get_potential_moves in Edax
+    /// Compute bitset of potential moves for the opponent.
+    /// Used for computing potential moves.
+    ///
+    /// Like get_potential_moves() in Edax
     fn potential_moves(&self) -> u64 {
         fn get_some_potential_moves(p: u64, dir: i32) -> u64 {
             (p << dir) | (p >> dir)
@@ -360,7 +403,9 @@ impl Position {
         potential_moves & empties
     }
 
-    /// Like get_potential_mobility in Edax
+    /// Compute bitset of potential moves.
+    ///
+    /// Like get_potential_mobility() in Edax
     pub fn potential_mobility(&self) -> i32 {
         const CORNERS: u64 = 0x8100000000000081;
 
@@ -380,17 +425,23 @@ impl Position {
         stable.count_ones() as i32
     }
 
-    /// Like get_corner_stability in Edax
+    /// Count the number of stable discs around the corner that belong to the player to move.
+    ///
+    /// Like get_corner_stability() in Edax
     pub fn corner_stability(&self) -> i32 {
         Self::corner_stability_internal(self.player)
     }
 
+    /// Count the number of stable discs around the corner that belong to the opponent.
+    ///
     /// Similar to get_corner_stability() in Edax but for the opponent
     pub fn opponent_corner_stability(&self) -> i32 {
         Self::corner_stability_internal(self.opponent)
     }
 
-    /// Like get_weighted_mobility in Edax
+    /// Compute weighted mobility.
+    ///
+    /// Like get_weighted_mobility() in Edax
     pub fn weighted_mobility(&self) -> i32 {
         const CORNERS: u64 = 0x8100000000000081;
 
@@ -399,18 +450,23 @@ impl Position {
         (moves.count_ones() as i32) + (moves & CORNERS).count_ones() as i32
     }
 
-    /// Like get_edge_stability in Edax
+    /// Estimate the number of stable discs on the edges for the player to move.
+    ///
+    /// Like get_edge_stability() in Edax
     pub fn edge_stability(&self) -> i32 {
         let stable = get_stable_edge(self.player, self.opponent);
         stable.count_ones() as i32
     }
 
-    /// Similar to get_edge_stability in Edax but for the opponent
+    /// Estimate the number of stable discs on the edges for the opponent.
+    ///
+    /// Similar to get_edge_stability() in Edax but for the opponent
     pub fn opponent_edge_stability(&self) -> i32 {
         let stable = get_stable_edge(self.opponent, self.player);
         stable.count_ones() as i32
     }
 
+    /// Count the number of moves for the player to move.
     pub fn count_moves(&self) -> usize {
         self.get_moves().count_ones() as usize
     }
