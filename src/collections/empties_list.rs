@@ -1,4 +1,4 @@
-use std::{ops::Index, ptr::NonNull};
+use std::ptr::NonNull;
 
 use crate::bot::edax::r#const::QUADRANT_ID;
 
@@ -116,24 +116,18 @@ impl EmptiesList {
         let base_ptr = nodes.as_mut_ptr();
 
         unsafe {
-            // Push first node (sentinel)
-            let mut prev = base_ptr;
-
             // Push nodes and set links
             for (i, square) in std::iter::zip(1..size + 1, iter) {
                 x_to_node[square.x as usize] = i;
-
-                let current_ptr = base_ptr.add(i);
 
                 // Set up the new node
                 let node = Node {
                     data: square,
                     next: Some(NonNull::new_unchecked(base_ptr.add(i + 1))),
-                    prev: Some(NonNull::new_unchecked(prev)),
+                    prev: Some(NonNull::new_unchecked(base_ptr.add(i - 1))),
                 };
 
                 nodes.push(node);
-                prev = current_ptr;
             }
 
             // Adjust last node
@@ -141,59 +135,16 @@ impl EmptiesList {
             nodes[last].next = Some(NonNull::new_unchecked(base_ptr));
 
             // Set sentinel prev pointer to last node
-            nodes[0].prev = Some(NonNull::new_unchecked(
-                base_ptr.offset(nodes.len() as isize - 1),
-            ));
+            nodes[0].prev = Some(NonNull::new_unchecked(base_ptr.add(last)));
 
             // Set sentinel next pointer to first node or self if list is empty.
-            nodes[0].next = if nodes.len() == 1 {
+            nodes[0].next = if size == 0 {
                 Some(NonNull::new_unchecked(base_ptr.offset(0)))
             } else {
                 Some(NonNull::new_unchecked(base_ptr.offset(1)))
             };
 
             Self { nodes, x_to_node }
-        }
-    }
-
-    /// Remove a node from the list.
-    /// The node is selected by index in the underlying vector.
-    /// The removed node never gets deallocated or changed. This allows for efficient restoration.
-    fn remove(&mut self, index: usize) {
-        let node = &mut self.nodes[index];
-
-        let prev = node.prev.unwrap();
-        let next = node.next.unwrap();
-
-        // SAFETY: This operation is safe because:
-        // 1. prev and next pointers are valid as they come from an active node in the list
-        // 2. The node being removed is part of the main list (has valid prev/next)
-        // 3. We maintain list invariants by properly updating neighboring nodes
-        unsafe {
-            // Update neighboring nodes to skip over this one
-            (*prev.as_ptr()).next = Some(next);
-            (*next.as_ptr()).prev = Some(prev);
-        }
-    }
-
-    /// Restore a previously removed node to the list.
-    /// The node is selected by index in the underlying vector.
-    fn restore(&mut self, index: usize) {
-        let node = &mut self.nodes[index];
-
-        let prev = node.prev.unwrap();
-        let next = node.next.unwrap();
-
-        let node_ptr = NonNull::from(node);
-
-        // SAFETY: This operation is safe because:
-        // 1. prev and next pointers are valid as they were preserved when the node was removed
-        // 2. The node being restored has maintained its original prev/next pointers
-        // 3. We maintain list invariants by properly updating neighboring nodes
-        unsafe {
-            // Restore neighboring nodes to point to this node again
-            (*prev.as_ptr()).next = Some(node_ptr);
-            (*next.as_ptr()).prev = Some(node_ptr);
         }
     }
 
@@ -222,18 +173,57 @@ impl EmptiesList {
         self.iter().filter(move |&s| parity & s.quadrant != 0)
     }
 
-    /// Remove a square from the list.
-    /// The square is selected by its x-coordinate.
+    /// Remove the square with given coordinate from the list.
+    /// The removed square never gets deallocated or changed. This allows for efficient restoration.
+    ///
+    /// It is up to the caller to ensure that an item with the given coordinate is in the list.
     pub fn remove_by_x(&mut self, x: i32) {
         let index = self.x_to_node[x as usize];
-        self.remove(index); // TODO inline this call
+
+        // Attempt to remove a square that's not in the list.
+        debug_assert_ne!(index, 0);
+
+        let node = &mut self.nodes[index];
+
+        let prev = node.prev.unwrap();
+        let next = node.next.unwrap();
+
+        // SAFETY: This operation is safe because:
+        // 1. prev and next pointers are valid as they come from an active node in the list
+        // 2. The node being removed is part of the main list (has valid prev/next)
+        // 3. We maintain list invariants by properly updating neighboring nodes
+        unsafe {
+            // Update neighboring nodes to skip over this one
+            (*prev.as_ptr()).next = Some(next);
+            (*next.as_ptr()).prev = Some(prev);
+        }
     }
 
-    /// Restore a previously removed square to the list.
-    /// The square is selected by the its x-coordinate.
+    /// Restore a previously removed square with given coordinate to the list.
+    ///
+    /// It is up to the caller to ensure that an item with the given coordinate is in the list.
     pub fn restore_by_x(&mut self, x: i32) {
         let index = self.x_to_node[x as usize];
-        self.restore(index); // TODO inline this call
+
+        // Attempt to restore a square that's not in the list.
+        debug_assert_ne!(index, 0);
+
+        let node = &mut self.nodes[index];
+
+        let prev = node.prev.unwrap();
+        let next = node.next.unwrap();
+
+        let node_ptr = NonNull::from(node);
+
+        // SAFETY: This operation is safe because:
+        // 1. prev and next pointers are valid as they were preserved when the node was removed
+        // 2. The node being restored has maintained its original prev/next pointers
+        // 3. We maintain list invariants by properly updating neighboring nodes
+        unsafe {
+            // Restore neighboring nodes to point to this node again
+            (*prev.as_ptr()).next = Some(node_ptr);
+            (*next.as_ptr()).prev = Some(node_ptr);
+        }
     }
 
     /// Get the number of squares in the list.
@@ -270,15 +260,6 @@ impl<'a> Iterator for Iter<'a> {
             self.next = (*current.as_ptr()).next;
             Some(&(*current.as_ptr()).data)
         }
-    }
-}
-
-// TODO this is not used, remove.
-impl Index<usize> for EmptiesList {
-    type Output = Square;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.nodes[index + 1].data
     }
 }
 
@@ -371,10 +352,10 @@ mod tests {
     fn test_remove_and_restore_first() {
         let mut list = from_int_array(&[11, 22, 33]);
 
-        list.remove(1);
+        list.remove_by_x(11);
         validate_list(&list, &[22, 33]);
 
-        list.restore(1);
+        list.restore_by_x(11);
         validate_list(&list, &[11, 22, 33]);
     }
 
@@ -382,10 +363,10 @@ mod tests {
     fn test_remove_and_restore_last() {
         let mut list = from_int_array(&[11, 22, 33]);
 
-        list.remove(3);
+        list.remove_by_x(33);
         validate_list(&list, &[11, 22]);
 
-        list.restore(3);
+        list.restore_by_x(33);
         validate_list(&list, &[11, 22, 33]);
     }
 
@@ -393,10 +374,10 @@ mod tests {
     fn test_remove_and_restore_middle() {
         let mut list = from_int_array(&[11, 22, 33]);
 
-        list.remove(2);
+        list.remove_by_x(22);
         validate_list(&list, &[11, 33]);
 
-        list.restore(2);
+        list.restore_by_x(22);
         validate_list(&list, &[11, 22, 33]);
     }
 
@@ -406,28 +387,28 @@ mod tests {
 
         validate_list(&list, &[11, 22, 33, 44]);
 
-        list.remove(2); // Remove 22
+        list.remove_by_x(22);
         validate_list(&list, &[11, 33, 44]);
 
-        list.remove(3); // Remove 33
+        list.remove_by_x(33);
         validate_list(&list, &[11, 44]);
 
-        list.remove(1); // Remove 11
+        list.remove_by_x(11);
         validate_list(&list, &[44]);
 
-        list.remove(4); // Remove 44
+        list.remove_by_x(44);
         validate_list(&list, &[]);
 
-        list.restore(4); // Add 44
+        list.restore_by_x(44);
         validate_list(&list, &[44]);
 
-        list.restore(1); // Add 11
+        list.restore_by_x(11);
         validate_list(&list, &[11, 44]);
 
-        list.restore(3); // Add 33
+        list.restore_by_x(33);
         validate_list(&list, &[11, 33, 44]);
 
-        list.restore(2); // Add 22
+        list.restore_by_x(22);
         validate_list(&list, &[11, 22, 33, 44]);
     }
 
@@ -579,20 +560,19 @@ mod tests {
     }
 
     #[test]
-    fn test_index() {
-        let list = from_int_array(&[11, 22, 33, 44]);
+    fn test_len() {
+        let mut list = from_int_array(&[11, 22]);
+        assert_eq!(list.len(), 2);
+        assert!(!list.is_empty());
 
-        // Test valid indices
-        assert_eq!(list[0].x, 11);
-        assert_eq!(list[1].x, 22);
-        assert_eq!(list[2].x, 33);
-        assert_eq!(list[3].x, 44);
-    }
+        list.remove_by_x(22);
 
-    #[test]
-    #[should_panic(expected = "index out of bounds")]
-    fn test_index_panic() {
-        let list = from_int_array(&[11, 22, 33, 44]);
-        let _should_panic = &list[4]; // This should panic as it's out of bounds
+        // Removing item from list doesn't change length
+        assert_eq!(list.len(), 2);
+        assert!(!list.is_empty());
+
+        let list = from_int_array(&[]);
+        assert_eq!(list.len(), 0);
+        assert!(list.is_empty());
     }
 }
