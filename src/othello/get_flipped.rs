@@ -1,3 +1,26 @@
+/// Compute flipped discs when moving to a given square.
+///
+/// `player` is the bitboard of the player's discs.
+/// `opponent` is the bitboard of the opponent's discs.
+/// `index` is the index of the square of the move
+///
+/// Uses flip functions like in flip_bitscan.c in Edax.
+pub fn get_flipped(player: u64, opponent: u64, index: usize) -> u64 {
+    FLIP[index](player, opponent)
+}
+
+type FlipFn = fn(u64, u64) -> u64;
+
+static FLIP: [FlipFn; 64] = [
+    flip_a1, flip_b1, flip_c1, flip_d1, flip_e1, flip_f1, flip_g1, flip_h1, flip_a2, flip_b2,
+    flip_c2, flip_d2, flip_e2, flip_f2, flip_g2, flip_h2, flip_a3, flip_b3, flip_c3, flip_d3,
+    flip_e3, flip_f3, flip_g3, flip_h3, flip_a4, flip_b4, flip_c4, flip_d4, flip_e4, flip_f4,
+    flip_g4, flip_h4, flip_a5, flip_b5, flip_c5, flip_d5, flip_e5, flip_f5, flip_g5, flip_h5,
+    flip_a6, flip_b6, flip_c6, flip_d6, flip_e6, flip_f6, flip_g6, flip_h6, flip_a7, flip_b7,
+    flip_c7, flip_d7, flip_e7, flip_f7, flip_g7, flip_h7, flip_a8, flip_b8, flip_c8, flip_d8,
+    flip_e8, flip_f8, flip_g8, flip_h8,
+];
+
 const OUTFLANK_2: [u8; 64] = [
     0x00, 0x01, 0x00, 0x00, 0x10, 0x11, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x20, 0x21, 0x00, 0x00,
     0x00, 0x01, 0x00, 0x00, 0x10, 0x11, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x40, 0x41, 0x00, 0x00,
@@ -1216,37 +1239,102 @@ fn flip_h8(p: u64, o: u64) -> u64 {
     flipped
 }
 
-type FlipFn = fn(u64, u64) -> u64;
-
-static FLIP: [FlipFn; 64] = [
-    flip_a1, flip_b1, flip_c1, flip_d1, flip_e1, flip_f1, flip_g1, flip_h1, flip_a2, flip_b2,
-    flip_c2, flip_d2, flip_e2, flip_f2, flip_g2, flip_h2, flip_a3, flip_b3, flip_c3, flip_d3,
-    flip_e3, flip_f3, flip_g3, flip_h3, flip_a4, flip_b4, flip_c4, flip_d4, flip_e4, flip_f4,
-    flip_g4, flip_h4, flip_a5, flip_b5, flip_c5, flip_d5, flip_e5, flip_f5, flip_g5, flip_h5,
-    flip_a6, flip_b6, flip_c6, flip_d6, flip_e6, flip_f6, flip_g6, flip_h6, flip_a7, flip_b7,
-    flip_c7, flip_d7, flip_e7, flip_f7, flip_g7, flip_h7, flip_a8, flip_b8, flip_c8, flip_d8,
-    flip_e8, flip_f8, flip_g8, flip_h8,
-];
-
-/// Compute flipped discs when moving to a given square.
-///
-/// `player` is the bitboard of the player's discs.
-/// `opponent` is the bitboard of the opponent's discs.
-/// `index` is the index of the square of the move
-pub fn get_flipped_edax_bitscan(player: u64, opponent: u64, index: usize) -> u64 {
-    FLIP[index](player, opponent)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::othello::{
-        get_flipped::simple::get_flipped_simple, get_moves::tests::move_test_cases,
-        position::print_bitset,
-    };
+    use crate::othello::{get_moves::tests::move_test_cases, position::print_bitset};
+
+    /// Naive implementation of `get_flipped` for testing.
+    pub fn get_flipped_simple(player: u64, opponent: u64, index: usize) -> u64 {
+        let move_x = index % 8;
+        let move_y = index / 8;
+
+        const DIRECTIONS: [(i32, i32); 8] = [
+            (-1, -1),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (1, 0),
+            (1, 1),
+        ];
+
+        let mut flipped = 0u64;
+
+        for (dx, dy) in DIRECTIONS {
+            let mut direction_flipped = 0u64;
+
+            for distance in 1..=7 {
+                let square_x = move_x as i32 + distance * dx;
+                let square_y = move_y as i32 + distance * dy;
+
+                if !(0..8).contains(&square_x) || !(0..8).contains(&square_y) {
+                    break;
+                }
+
+                let square_mask = 1u64 << (square_y * 8 + square_x);
+
+                // Square has opponent's piece
+                if square_mask & opponent != 0 {
+                    direction_flipped |= square_mask;
+                    continue;
+                }
+
+                // Square has player's piece
+                if square_mask & player != 0 {
+                    flipped |= direction_flipped;
+                    break;
+                }
+
+                // Square is empty
+                break;
+            }
+        }
+
+        flipped
+    }
+
+    /// Naive implementation of `get_flipped` from Edax.
+    pub fn get_flipped_edax_slow(player: u64, opponent: u64, index: usize) -> u64 {
+        fn x_to_bit(x: i32) -> u64 {
+            1u64 << (x as usize)
+        }
+
+        const DIR: [i32; 8] = [-9, -8, -7, -1, 1, 7, 8, 9];
+
+        const EDGE: [u64; 8] = [
+            0x01010101010101ff,
+            0x00000000000000ff,
+            0x80808080808080ff,
+            0x0101010101010101,
+            0x8080808080808080,
+            0xff01010101010101,
+            0xff00000000000000,
+            0xff80808080808080,
+        ];
+
+        let mut flipped = 0;
+
+        for d in 0..8 {
+            if (x_to_bit(index as i32) & EDGE[d]) == 0 {
+                let mut f = 0;
+                let mut x = index as i32 + DIR[d];
+                while (opponent & x_to_bit(x)) != 0 && (x_to_bit(x) & EDGE[d]) == 0 {
+                    f |= x_to_bit(x);
+                    x += DIR[d];
+                }
+                if (player & x_to_bit(x)) != 0 {
+                    flipped |= f;
+                }
+            }
+        }
+
+        flipped
+    }
 
     #[test]
-    fn test_get_flipped_edax_bitscan() {
+    fn test_get_flipped() {
         let test_cases = move_test_cases();
 
         for position in &test_cases {
@@ -1259,9 +1347,10 @@ mod tests {
                 let opponent = position.opponent;
 
                 let simple = get_flipped_simple(player, opponent, move_);
-                let edax_bitscan = get_flipped_edax_bitscan(player, opponent, move_);
+                let get_flipped = get_flipped(player, opponent, move_);
+                let slow = get_flipped_edax_slow(player, opponent, move_);
 
-                if simple != edax_bitscan {
+                if get_flipped != simple && get_flipped != slow {
                     println!("move = {}", move_);
 
                     println!("position:");
@@ -1274,8 +1363,11 @@ mod tests {
                     println!("simple:");
                     print_bitset(simple);
 
-                    println!("edax_bitscan:");
-                    print_bitset(edax_bitscan);
+                    println!("get_flipped:");
+                    print_bitset(get_flipped);
+
+                    println!("slow:");
+                    print_bitset(slow);
 
                     panic!();
                 }
