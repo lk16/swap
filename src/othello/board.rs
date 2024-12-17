@@ -3,28 +3,15 @@ use std::fmt::{self, Display};
 
 use super::position::Position;
 
-/// Represents player with black discs is to move
-pub const BLACK: usize = 0;
-
-/// Represents player with white discs is to move
-pub const WHITE: usize = 1;
-
-/// Returns the opponent of a player
-pub fn opponent(color: usize) -> usize {
-    1 - color
-}
-
-// TODO make fields private like in Position
-
 /// Representation of an Othello board.
 /// This is essentially a `Position` that keeps track of whose turn it is.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Board {
     /// The position of the board
-    pub position: Position,
+    position: Position,
 
     /// Whose turn it is
-    pub turn: usize,
+    black_to_move: bool,
 }
 
 impl Default for Board {
@@ -35,7 +22,7 @@ impl Default for Board {
 
 impl Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let ascii_art = self.position.ascii_art(self.turn);
+        let ascii_art = self.position.ascii_art(self.black_to_move);
         write!(f, "{}", ascii_art)
     }
 }
@@ -45,7 +32,7 @@ impl Board {
     pub fn new() -> Self {
         Self {
             position: Position::new(),
-            turn: BLACK,
+            black_to_move: true,
         }
     }
 
@@ -53,25 +40,28 @@ impl Board {
     pub fn new_xot() -> Self {
         Self {
             position: Position::new_xot(),
-            turn: BLACK,
+            black_to_move: true,
         }
     }
 
     /// Create a board from bitboards and whose turn it is.
-    pub fn new_from_bitboards(black: u64, white: u64, turn: usize) -> Self {
-        let (player, opponent) = if turn == BLACK {
+    pub fn new_from_bitboards(black: u64, white: u64, black_to_move: bool) -> Self {
+        let (player, opponent) = if black_to_move {
             (black, white)
         } else {
             (white, black)
         };
 
         let position = Position::new_from_bitboards(player, opponent);
-        Self::combine(position, turn)
+        Self::combine(position, black_to_move)
     }
 
     /// Combine a position and whose turn it is into a board.
-    pub fn combine(position: Position, turn: usize) -> Self {
-        Self { position, turn }
+    pub fn combine(position: Position, black_to_move: bool) -> Self {
+        Self {
+            position,
+            black_to_move,
+        }
     }
 
     /// Get a bitset of valid moves for the player to move.
@@ -93,19 +83,19 @@ impl Board {
     /// This function does not check if the move is valid.
     pub fn do_move(&mut self, index: usize) {
         self.position.do_move(index);
-        self.turn = opponent(self.turn);
+        self.black_to_move = !self.black_to_move;
     }
 
     /// Pass the turn to the opponent.
     /// This function does not check if the player or the opponent has any moves.
     pub fn pass(&mut self) {
-        self.turn = opponent(self.turn);
+        self.black_to_move = !self.black_to_move;
         self.position.pass();
     }
 
     /// Get the ASCII art representation of the board.
     pub fn ascii_art(&self) -> String {
-        self.position.ascii_art(self.turn)
+        self.position.ascii_art(self.black_to_move)
     }
 
     /// Get the board as a WebSocket message.
@@ -119,13 +109,13 @@ impl Board {
         for i in 0..64 {
             let mask = 1u64 << i;
             if self.position.player() & mask != 0 {
-                if self.turn == BLACK {
+                if self.black_to_move {
                     black.push(i);
                 } else {
                     white.push(i);
                 }
             } else if self.position.opponent() & mask != 0 {
-                if self.turn == BLACK {
+                if self.black_to_move {
                     white.push(i);
                 } else {
                     black.push(i);
@@ -140,7 +130,7 @@ impl Board {
             }
         }
 
-        let turn = if self.turn == BLACK { "black" } else { "white" };
+        let turn = if self.black_to_move { "black" } else { "white" };
 
         json!({
             "black": black,
@@ -157,8 +147,8 @@ impl Board {
     }
 
     /// Get the bitboard of black discs.
-    pub fn black_discs(&self) -> u64 {
-        if self.turn == BLACK {
+    pub fn black(&self) -> u64 {
+        if self.black_to_move {
             self.position.player()
         } else {
             self.position.opponent()
@@ -166,8 +156,8 @@ impl Board {
     }
 
     /// Get the bitboard of white discs.
-    pub fn white_discs(&self) -> u64 {
-        if self.turn == BLACK {
+    pub fn white(&self) -> u64 {
+        if self.black_to_move {
             self.position.opponent()
         } else {
             self.position.player()
@@ -177,12 +167,22 @@ impl Board {
     /// Do a move, but return a new board instead of modifying the current one.
     pub fn do_move_cloned(&self, index: usize) -> Self {
         let position = self.position.do_move_cloned(index);
-        Self::combine(position, opponent(self.turn))
+        Self::combine(position, !self.black_to_move)
     }
 
     /// Check if we have to pass but the game is not over.
     pub fn has_to_pass(&self) -> bool {
         !self.has_moves() && self.position.opponent_has_moves()
+    }
+
+    /// Get the position of the board.
+    pub fn position(&self) -> &Position {
+        &self.position
+    }
+
+    /// Check if black is to move.
+    pub fn is_black_to_move(&self) -> bool {
+        self.black_to_move
     }
 }
 
@@ -194,7 +194,8 @@ mod tests {
     #[test]
     fn test_new_board() {
         let board = Board::new();
-        assert!(board.turn == BLACK);
+
+        assert!(board.is_black_to_move());
         assert_eq!(board.position.player(), 0x0000000810000000);
         assert_eq!(board.position.opponent(), 0x0000001008000000);
     }
@@ -209,8 +210,8 @@ mod tests {
     fn test_do_move() {
         let mut board = Board::new();
         board.do_move(19); // D3
-        assert!(board.turn == WHITE);
 
+        assert!(!board.is_black_to_move());
         assert_eq!(board.position.player(), 0x0000001000000000);
         assert_eq!(board.position.opponent(), 0x0000000818080000);
     }
@@ -326,15 +327,15 @@ mod tests {
     #[test]
     fn test_new_xot() {
         let board = Board::new_xot();
-        assert!(board.turn == BLACK);
+        assert!(board.is_black_to_move());
         assert_eq!(board.count_discs(), 12);
     }
 
     #[test]
     fn test_combine() {
         let position = Position::new();
-        let board = Board::combine(position, WHITE);
-        assert!(board.turn == WHITE);
+        let board = Board::combine(position, false);
+        assert!(!board.is_black_to_move());
         assert_eq!(board.position.player(), 0x0000000810000000);
         assert_eq!(board.position.opponent(), 0x0000001008000000);
     }
@@ -346,9 +347,9 @@ mod tests {
         let mut passed = board;
         passed.pass();
 
-        assert_eq!(passed.black_discs(), board.black_discs());
-        assert_eq!(passed.white_discs(), board.white_discs());
-        assert!(passed.turn == WHITE);
+        assert_eq!(passed.black(), board.black());
+        assert_eq!(passed.white(), board.white());
+        assert!(!passed.is_black_to_move());
     }
 
     #[test]
@@ -366,17 +367,17 @@ mod tests {
     fn test_new_from_bitboards() {
         let black = 0x0000000810000000; // Standard initial black position
         let white = 0x0000001008000000; // Standard initial white position
-        let board = Board::new_from_bitboards(black, white, BLACK);
+        let board = Board::new_from_bitboards(black, white, true);
 
-        assert!(board.turn == BLACK);
-        assert_eq!(board.black_discs(), black);
-        assert_eq!(board.white_discs(), white);
+        assert!(board.is_black_to_move());
+        assert_eq!(board.black(), black);
+        assert_eq!(board.white(), white);
 
         // Test with different turn
-        let board_white = Board::new_from_bitboards(black, white, WHITE);
-        assert!(board_white.turn == WHITE);
-        assert_eq!(board_white.white_discs(), white);
-        assert_eq!(board_white.black_discs(), black);
+        let board_white = Board::new_from_bitboards(black, white, false);
+        assert!(!board_white.is_black_to_move());
+        assert_eq!(board_white.white(), white);
+        assert_eq!(board_white.black(), black);
     }
 
     #[test]
@@ -388,7 +389,7 @@ mod tests {
         // Test custom position with more discs
         let player = 0x000000FF00000000;
         let opponent = 0x0000000000FF0000;
-        let board = Board::new_from_bitboards(player, opponent, BLACK);
+        let board = Board::new_from_bitboards(player, opponent, true);
         assert_eq!(board.count_discs(), 16);
     }
 
@@ -420,13 +421,39 @@ mod tests {
         let cloned = board.do_move_cloned(19); // D3
 
         // Original board should be unchanged
-        assert!(board.turn == BLACK);
+        assert!(board.is_black_to_move());
         assert_eq!(board.position.player(), 0x0000000810000000);
         assert_eq!(board.position.opponent(), 0x0000001008000000);
 
         // Cloned board should reflect the move
-        assert!(cloned.turn == WHITE);
+        assert!(!cloned.is_black_to_move());
         assert_eq!(cloned.position.player(), 0x0000001000000000);
         assert_eq!(cloned.position.opponent(), 0x0000000818080000);
+    }
+
+    #[test]
+    fn test_has_to_pass() {
+        // Initial position has moves, don't pass
+        let board = Board::new();
+        assert!(!board.has_to_pass());
+
+        // No moves for either player, don't pass
+        let board = Board::new_from_bitboards(0x0, 0x0, true);
+        assert!(!board.has_to_pass());
+
+        // No moves for black, but moves for white, so pass
+        let board = Board::new_from_bitboards(0x2, 0x1, true);
+        assert!(board.has_to_pass());
+
+        // No moves for white, but moves for black, so pass
+        let board = Board::new_from_bitboards(0x1, 0x2, false);
+        assert!(board.has_to_pass());
+    }
+
+    #[test]
+    fn test_getters() {
+        let board = Board::new();
+        assert_eq!(*board.position(), board.position);
+        assert_eq!(board.is_black_to_move(), board.black_to_move);
     }
 }

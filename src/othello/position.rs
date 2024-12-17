@@ -6,7 +6,6 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use super::board::BLACK;
 use super::count_stable::{count_stable, get_stable_edge};
 use super::get_flipped::get_flipped;
 use super::get_moves::get_moves;
@@ -43,7 +42,7 @@ lazy_static! {
 /// Helper for printing bitset to facilitate testing its implementation.
 fn print_bitset_to<W: std::fmt::Write>(bitset: u64, writer: &mut W) -> std::fmt::Result {
     let position = Position::new_from_bitboards(0, bitset);
-    write!(writer, "{}", position.ascii_art(BLACK))
+    write!(writer, "{}", position.ascii_art(true))
 }
 
 /// Print a bitset as an ASCII art board to stdout. Useful for debugging.
@@ -79,7 +78,7 @@ impl Default for Position {
 
 impl Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.ascii_art(BLACK))
+        write!(f, "{}", self.ascii_art(true))
     }
 }
 
@@ -238,8 +237,8 @@ impl Position {
     }
 
     /// Returns an ASCII art representation of the board.
-    pub fn ascii_art(&self, turn: usize) -> String {
-        let (player_char, opponent_char) = if turn == BLACK {
+    pub fn ascii_art(&self, black_to_move: bool) -> String {
+        let (player_char, opponent_char) = if black_to_move {
             ("○", "●")
         } else {
             ("●", "○")
@@ -502,7 +501,7 @@ impl Iterator for MoveIndices {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bot::edax::eval::tests::test_positions, othello::board::WHITE};
+    use crate::bot::edax::eval::tests::test_positions;
 
     use super::*;
 
@@ -585,7 +584,7 @@ mod tests {
         let position = Position::new();
 
         // Test ascii_art with black to move
-        let result_black = position.ascii_art(BLACK);
+        let result_black = position.ascii_art(true);
         let expected_output_black = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1
@@ -607,7 +606,7 @@ mod tests {
         position.do_move(19); // D3
 
         // Test ascii_art with white to move
-        let result_white = position.ascii_art(WHITE);
+        let result_white = position.ascii_art(false);
         let expected_output_white = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1

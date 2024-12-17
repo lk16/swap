@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::time::Duration;
 
 use crate::frontend::game::Game;
-use crate::othello::board::{Board, BLACK, WHITE};
+use crate::othello::board::Board;
 use axum::extract::ws::{Message, WebSocket};
 use futures::{
     stream::{SplitSink, SplitStream},
@@ -187,7 +187,7 @@ impl GameSession {
         args: (&String, &Value),
     ) -> Result<(), HandlerError> {
         let bot_name = args.1.as_str().unwrap();
-        self.game.set_player(BLACK, bot_name);
+        self.game.set_player(true, bot_name);
         self.do_bot_move().await
     }
 
@@ -197,7 +197,7 @@ impl GameSession {
         args: (&String, &Value),
     ) -> Result<(), HandlerError> {
         let bot_name = args.1.as_str().unwrap();
-        self.game.set_player(WHITE, bot_name);
+        self.game.set_player(false, bot_name);
         self.do_bot_move().await
     }
 
@@ -214,7 +214,7 @@ impl GameSession {
                 return Ok(());
             }
 
-            let move_index = bot.get_move(&board.position);
+            let move_index = bot.get_move(board.position());
             self.game.do_move(move_index);
 
             self.send_current_board().await.map_err(WebSocketError)?;
