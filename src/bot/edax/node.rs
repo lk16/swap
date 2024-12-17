@@ -1,10 +1,12 @@
 use std::sync::{atomic::Ordering, Arc, Mutex};
 
-use crate::{collections::move_list::MoveList, othello::squares::NO_MOVE};
+use crate::{
+    collections::move_list::{Move, MoveList},
+    othello::squares::NO_MOVE,
+};
 
 use super::{
     r#const::Stop,
-    r#move::Move,
     search::{Search, Shared},
 };
 

@@ -1,6 +1,34 @@
 use std::{ops::Index, ptr::NonNull};
 
-use crate::bot::edax::square::Square;
+use crate::bot::edax::r#const::QUADRANT_ID;
+
+/// A square on the board.
+/// This is used for keeping track of remaining empty squares.
+///
+/// Like SquareList in Edax, except we don't store links in the same struct.
+/// In this implementation, Square is used as an item in EmptiesList.
+#[derive(Default, Clone, PartialEq, Debug)]
+pub struct Square {
+    /// Bitset representation of the square
+    pub b: u64,
+
+    /// Index of the square
+    pub x: i32,
+
+    /// Parity quadrant of the square
+    pub quadrant: u32,
+}
+
+impl Square {
+    /// Create a new square from an index.
+    pub fn new(x: usize) -> Self {
+        Self {
+            b: 1 << x,
+            x: x as i32,
+            quadrant: QUADRANT_ID[x],
+        }
+    }
+}
 
 /// A node in the `EmptiesList`.
 #[derive(Default, Clone)]

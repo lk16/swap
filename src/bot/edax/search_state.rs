@@ -1,19 +1,21 @@
 use rand::Rng;
 
 use crate::{
-    collections::{empties_list::EmptiesList, hashtable::HashData, move_list::MoveList},
+    collections::{
+        empties_list::{EmptiesList, Square},
+        hashtable::HashData,
+        move_list::{Move, MoveList},
+    },
     othello::position::Position,
 };
 
 use super::{
     eval::{Eval, EVAL_N_FEATURES},
     r#const::{
-        NodeType, GAME_SIZE, NWS_STABILITY_THRESHOLD, PVS_STABILITY_THRESHOLD, SCORE_INF,
-        SCORE_MAX, SCORE_MIN,
+        NodeType, GAME_SIZE, NWS_STABILITY_THRESHOLD, PRESORTED_X, PVS_STABILITY_THRESHOLD,
+        QUADRANT_ID, SCORE_INF, SCORE_MAX, SCORE_MIN,
     },
-    r#move::Move,
     search::Bound,
-    square::{Square, PRESORTED_X, QUADRANT_ID},
     weights::EVAL_WEIGHT,
 };
 
@@ -68,7 +70,7 @@ pub struct SearchState {
 impl SearchState {
     /// Create a new search state for a position.
     ///
-    /// Includes logic of search_setup()
+    /// Includes logic of Edax's search_setup()
     pub fn new(position: &Position) -> Self {
         let n_empties = position.count_empty() as i32;
 

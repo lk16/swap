@@ -6,14 +6,16 @@ use crate::bot::edax::eval::Eval;
 use crate::bot::edax::node::Node;
 use crate::bot::edax::r#const::{
     DEPTH_TO_SHALLOW_SEARCH, ITERATIVE_MIN_EMPTIES, NEIGHBOUR, NO_SELECTIVITY,
-    NWS_STABILITY_THRESHOLD, PROBCUT_D, RCD, SCORE_INF, SCORE_MAX, SCORE_MIN, SELECTIVITY_TABLE,
+    NWS_STABILITY_THRESHOLD, PROBCUT_D, QUADRANT_ID, RCD, SCORE_INF, SCORE_MAX, SCORE_MIN,
+    SELECTIVITY_TABLE, SQUARE_VALUE,
 };
-use crate::bot::edax::square::SQUARE_VALUE;
 use crate::collections::hashtable::{HashData, StoreArgs};
 use crate::othello::position::GameState;
 use crate::{
-    bot::edax::square::QUADRANT_ID,
-    collections::{hashtable::HashTable, move_list::MoveList},
+    collections::{
+        hashtable::HashTable,
+        move_list::{Move, MoveList},
+    },
     othello::{count_last_flip::count_last_flip, position::Position, squares::*},
 };
 
@@ -22,7 +24,6 @@ use super::r#const::{
     SORT_ALPHA_DELTA,
 };
 use super::r#const::{Stop, LEVEL};
-use super::r#move::Move;
 use super::search_state::SearchState;
 
 /// Results of a search.
