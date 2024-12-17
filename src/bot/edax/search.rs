@@ -10,7 +10,6 @@ use crate::bot::edax::r#const::{
     SELECTIVITY_TABLE, SQUARE_VALUE,
 };
 use crate::collections::hashtable::{HashData, StoreArgs};
-use crate::othello::position::GameState;
 use crate::{
     collections::{
         hashtable::HashTable,
@@ -1295,7 +1294,7 @@ impl Search {
                 return false;
             }
 
-            if x == NO_MOVE as i32 && position.game_state() != GameState::Finished {
+            if x == NO_MOVE as i32 && !position.is_game_end() {
                 return false;
             }
         }

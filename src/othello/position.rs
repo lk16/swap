@@ -60,15 +60,6 @@ pub fn print_bitset(bitset: u64) {
     println!("{}", output);
 }
 
-/// Game state of a position.
-// TODO remove this
-#[derive(PartialEq, Debug)]
-pub enum GameState {
-    HasMoves,
-    Passed,
-    Finished,
-}
-
 /// A position in the game of Othello.
 /// This does not keep track of the player to move.
 /// It is intended to be used by bots for tree search.
@@ -215,19 +206,6 @@ impl Position {
 
     pub fn pass(&mut self) {
         std::mem::swap(&mut self.player, &mut self.opponent);
-    }
-
-    /// Get the game state of a position.
-    pub fn game_state(&self) -> GameState {
-        if self.has_moves() {
-            return GameState::HasMoves;
-        }
-
-        if self.opponent_has_moves() {
-            return GameState::Passed;
-        }
-
-        GameState::Finished
     }
 
     /// Apply a move to the position.
@@ -470,6 +448,11 @@ impl Position {
     pub fn count_moves(&self) -> usize {
         self.get_moves().count_ones() as usize
     }
+
+    /// Check if the game is finished.
+    pub fn is_game_end(&self) -> bool {
+        !self.has_moves() && !self.opponent_has_moves()
+    }
 }
 
 pub struct MoveIndices {
@@ -617,27 +600,6 @@ mod tests {
         position.pass();
         assert_eq!(position.player, original_player);
         assert_eq!(position.opponent, original_opponent);
-    }
-
-    #[test]
-    fn test_game_state() {
-        // Test HasMoves
-        let position = Position::new();
-        assert_eq!(position.game_state(), GameState::HasMoves);
-
-        // Test Passed
-        let passed_position = Position {
-            player: 0x2,
-            opponent: 0x1,
-        };
-        assert_eq!(passed_position.game_state(), GameState::Passed);
-
-        // Test Finished
-        let finished_position = Position {
-            player: 0xFFFFFFFFFFFFFFFF,
-            opponent: 0x0000000000000000,
-        };
-        assert_eq!(finished_position.game_state(), GameState::Finished);
     }
 
     #[test]

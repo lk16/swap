@@ -1,7 +1,7 @@
 use serde_json::json;
 use std::fmt::{self, Display};
 
-use super::position::{GameState, Position};
+use super::position::Position;
 
 /// Represents player with black discs is to move
 pub const BLACK: usize = 0;
@@ -101,12 +101,6 @@ impl Board {
         self.position.pass();
     }
 
-    /// Get the game state, which indicates whether the game is finished,
-    /// whether the player has passed, or whether the player has moves.
-    pub fn game_state(&self) -> GameState {
-        self.position.game_state()
-    }
-
     /// Get the ASCII art representation of the board.
     pub fn ascii_art(&self) -> String {
         self.position.ascii_art(self.turn)
@@ -182,6 +176,11 @@ impl Board {
     pub fn do_move_cloned(&self, index: usize) -> Self {
         let position = self.position.do_move_cloned(index);
         Self::combine(position, opponent(self.turn))
+    }
+
+    /// Check if we have to pass but the game is not over.
+    pub fn has_to_pass(&self) -> bool {
+        !self.has_moves() && self.position.opponent_has_moves()
     }
 }
 
@@ -359,21 +358,6 @@ mod tests {
         passed.pass();
 
         assert_eq!(passed, board);
-    }
-
-    #[test]
-    fn test_game_state() {
-        // Initial position
-        let board = Board::new();
-        assert_eq!(board.game_state(), GameState::HasMoves);
-
-        // Empty board, nobody can move
-        let board = Board::new_from_bitboards(0, 0, WHITE);
-        assert_eq!(board.game_state(), GameState::Finished);
-
-        // Black has no moves, white has one move
-        let board = Board::new_from_bitboards(0x2, 0x1, BLACK);
-        assert_eq!(board.game_state(), GameState::Passed);
     }
 
     #[test]

@@ -1,6 +1,5 @@
 use crate::bot::{get_bot, Bot};
 use crate::othello::board::Board;
-use crate::othello::position::GameState;
 
 /// A game of Othello as used by the websocket server.
 /// We maintain a history of moves for undoing and redoing.
@@ -98,7 +97,7 @@ impl Game {
         self.boards.push(board);
         self.offset += 1;
 
-        if board.game_state() == GameState::Passed {
+        if board.has_to_pass() {
             board.pass();
             self.boards.push(board);
             self.offset += 1;
