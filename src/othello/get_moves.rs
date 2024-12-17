@@ -1,28 +1,7 @@
-use crate::othello::position::Position;
-
+/// Get bitset of valid moves.
+///
+/// Like get_moves() in Edax.
 pub fn get_moves(player: u64, opponent: u64) -> u64 {
-    get_moves_fancy(player, opponent)
-}
-
-pub fn get_moves_simple(player: u64, opponent: u64) -> u64 {
-    let empty = !(player | opponent);
-    let mut moves = 0;
-
-    // Define direction offsets
-    const DIRECTIONS: [i32; 8] = [-9, -8, -7, -1, 1, 7, 8, 9];
-
-    for dir in DIRECTIONS {
-        let mut candidates = Position::shift(player, dir) & opponent;
-
-        while candidates != 0 {
-            moves |= empty & Position::shift(candidates, dir);
-            candidates = Position::shift(candidates, dir) & opponent;
-        }
-    }
-    moves
-}
-
-pub fn get_moves_fancy(player: u64, opponent: u64) -> u64 {
     let mask = opponent & 0x7E7E7E7E7E7E7E7E;
     let mut moves = 0;
 
@@ -58,6 +37,24 @@ pub fn get_moves_fancy(player: u64, opponent: u64) -> u64 {
 pub mod tests {
     use super::*;
     use crate::othello::position::{print_bitset, Position, XOT_POSITIONS};
+
+    pub fn get_moves_simple(player: u64, opponent: u64) -> u64 {
+        let empty = !(player | opponent);
+        let mut moves = 0;
+
+        // Define direction offsets
+        const DIRECTIONS: [i32; 8] = [-9, -8, -7, -1, 1, 7, 8, 9];
+
+        for dir in DIRECTIONS {
+            let mut candidates = Position::shift(player, dir) & opponent;
+
+            while candidates != 0 {
+                moves |= empty & Position::shift(candidates, dir);
+                candidates = Position::shift(candidates, dir) & opponent;
+            }
+        }
+        moves
+    }
 
     pub fn move_test_cases() -> Vec<Position> {
         const DIRECTIONS: [(i32, i32); 8] = [
@@ -109,20 +106,21 @@ pub mod tests {
         let test_cases = move_test_cases();
 
         for test_case in test_cases {
-            let simple_moves = get_moves_simple(test_case.player, test_case.opponent);
-            let fancy_moves = get_moves_fancy(test_case.player, test_case.opponent);
+            let simple = get_moves_simple(test_case.player, test_case.opponent);
+            let regular = get_moves(test_case.player, test_case.opponent);
 
             let position = Position::new_from_bitboards(test_case.player, test_case.opponent);
 
             println!("Position:");
             println!("{}", position);
 
-            println!("Fancy moves:");
-            print_bitset(fancy_moves);
-            println!("Simple moves:");
-            print_bitset(simple_moves);
+            println!("Regular:");
+            print_bitset(regular);
 
-            assert_eq!(simple_moves, fancy_moves);
+            println!("Simple:");
+            print_bitset(simple);
+
+            assert_eq!(simple, regular);
         }
     }
 }
