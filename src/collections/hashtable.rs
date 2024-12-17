@@ -1,10 +1,9 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::RwLock;
 
-use crate::bot::edax::r#const::{SCORE_MAX, SCORE_MIN};
+use crate::bot::edax::r#const::{SCORE_INF, SCORE_MAX, SCORE_MIN};
 use crate::othello::position::Position;
 use crate::othello::squares::NO_MOVE;
 
@@ -48,8 +47,8 @@ impl Default for HashData {
             selectivity: 0,
             cost: 0,
             date: 0,
-            lower: SCORE_MIN as i8,
-            upper: SCORE_MAX as i8,
+            lower: -SCORE_INF as i8,
+            upper: SCORE_INF as i8,
             move_: [NO_MOVE as u8, NO_MOVE as u8],
         }
     }
@@ -91,11 +90,16 @@ impl HashData {
     }
 
     /// Calculate a priority level for replacement strategy based on the entry's metadata.
+    ///
+    /// Like writable_level() in Edax
     pub fn writable_level(&self) -> u32 {
         u32::from_le_bytes([self.depth, self.selectivity, self.cost, self.date])
     }
 
     /// Update the entry with new evaluation data.
+    ///
+    /// This is done when the level is the same as the previous storage.
+    /// Best moves and bound scores are updated, other data are untouched.
     ///
     /// Like data_update() in Edax
     fn update(&mut self, args: &StoreArgs) {
@@ -115,7 +119,7 @@ impl HashData {
             self.lower = score;
         }
 
-        // Update move history if score beats alpha or is the minimum score
+        // Update best moves if score beats alpha or is the minimum score
         if (score > alpha || score == SCORE_MIN as i8) && self.move_[0] != move_ {
             self.move_[1] = self.move_[0];
             self.move_[0] = move_;
@@ -126,6 +130,9 @@ impl HashData {
     }
 
     /// Upgrade the entry with new evaluation data.
+    ///
+    /// Upgrade is done when the search level increases.
+    /// Best moves are updated, others data are reset to new value.
     ///
     /// Like data_upgrade() in Edax
     fn upgrade(&mut self, args: &StoreArgs) {
@@ -185,6 +192,8 @@ impl Entry {
 
     /// Update the entry with new evaluation data.
     ///
+    /// Returns whether the entry was updated.
+    ///
     /// Like hash_update() in Edax
     fn update(&mut self, date: u8, args: &StoreArgs) -> bool {
         if self.position != *args.position {
@@ -209,42 +218,6 @@ impl Entry {
 }
 
 type Bucket = [Entry; BUCKET_SIZE];
-
-/// Read-only guard for accessing hash table entries
-// TODO this is unused, remove.
-pub struct ReadGuard<'a> {
-    entries: std::sync::RwLockReadGuard<'a, Bucket>,
-    idx: usize,
-}
-
-impl Deref for ReadGuard<'_> {
-    type Target = HashData;
-
-    fn deref(&self) -> &Self::Target {
-        &self.entries[self.idx].hash_data
-    }
-}
-
-/// Write guard for modifying hash table entries
-// TODO this is unused, remove.
-pub struct WriteGuard<'a> {
-    entries: std::sync::RwLockWriteGuard<'a, Bucket>,
-    idx: usize,
-}
-
-impl Deref for WriteGuard<'_> {
-    type Target = HashData;
-
-    fn deref(&self) -> &Self::Target {
-        &self.entries[self.idx].hash_data
-    }
-}
-
-impl DerefMut for WriteGuard<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.entries[self.idx].hash_data
-    }
-}
 
 /// Arguments for storing position data in the hash table
 pub struct StoreArgs<'a> {
@@ -289,7 +262,6 @@ pub struct HashTable {
     date: AtomicU8,
 }
 
-/// Like HashTable in Edax
 impl HashTable {
     /// Creates a new hash table with the specified size (rounded up to next power of 2).
     pub fn new(size: usize) -> Self {
@@ -363,9 +335,9 @@ impl HashTable {
     }
 
     /// Completely clears the hash table by resetting all entries
-    pub fn cleanup(&self) {
-        // TODO remove, this is unused.
-
+    ///
+    /// Like hash_cleanup() in Edax.
+    pub fn clear(&self) {
         for bucket in self.buckets.iter() {
             let mut entries = bucket.write().unwrap();
             *entries = [Entry::default(); BUCKET_SIZE];
@@ -381,63 +353,14 @@ impl HashTable {
     /// - Performs full clear when date reaches 255
     ///
     /// Like hash_clear() in Edax
-    pub fn clear(&self) {
-        // TODO rename to soft_clear
-
+    pub fn soft_clear(&self) {
         let current_date = self.date.load(Ordering::Relaxed);
         if current_date == 255 {
             // Reset all entries
-            self.cleanup();
+            self.clear();
             self.date.store(1, Ordering::Relaxed);
         } else {
             self.date.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-
-    /// Forces storage of a position evaluation by always replacing the least valuable entry
-    /// in the target bucket, without checking for existing entries.
-    ///
-    /// This is more aggressive than the regular `store` method as it:
-    /// - Skips checking for existing entries
-    /// - Always replaces the entry with the lowest writable level
-    /// - Useful for when you want to ensure the new data is stored regardless of existing entries
-    ///
-    /// Like hash_force() in Edax
-    pub fn force_store(&self, args: &StoreArgs) {
-        let bucket_idx = self.get_bucket_index(args.position);
-        let bucket = &self.buckets[bucket_idx];
-        let mut entries = bucket.write().unwrap();
-
-        let date = self.date.load(Ordering::Relaxed);
-
-        // Find and replace entry with lowest writable_level
-        let entry = entries
-            .iter_mut()
-            .min_by_key(|entry| entry.hash_data.writable_level())
-            .unwrap();
-
-        *entry = Entry {
-            position: *args.position,
-            hash_data: HashData::new(date, args),
-        };
-    }
-
-    /// Removes a move from the hash table for a given position
-    ///
-    /// Like hash_exclude_move() in Edax
-    pub fn remove_move(&self, position: &Position, move_: i32) {
-        let bucket_idx = self.get_bucket_index(position);
-        let bucket = &self.buckets[bucket_idx];
-        let mut entries = bucket.write().unwrap();
-
-        if let Some(entry) = entries.iter_mut().find(|entry| entry.position == *position) {
-            if entry.hash_data.move_[0] == move_ as u8 {
-                entry.hash_data.move_[0] = entry.hash_data.move_[1];
-                entry.hash_data.move_[1] = NO_MOVE as u8;
-            } else if entry.hash_data.move_[1] == move_ as u8 {
-                entry.hash_data.move_[1] = NO_MOVE as u8;
-            }
-            entry.hash_data.lower = SCORE_MIN as i8;
         }
     }
 }
@@ -478,8 +401,8 @@ mod tests {
         table.store(&StoreArgs::from_pos_and_depth(&pos, 5));
 
         // Retrieve and verify
-        let guard = table.get(&pos).expect("Should find stored position");
-        assert_eq!(guard.depth, 5);
+        let hash_data = table.get(&pos).expect("Should find stored position");
+        assert_eq!(hash_data.depth, 5);
     }
 
     #[test]
@@ -490,8 +413,8 @@ mod tests {
         table.store(&StoreArgs::from_pos_and_depth(&pos, 5));
         table.store(&StoreArgs::from_pos_and_depth(&pos, 10));
 
-        let guard = table.get(&pos).expect("Should find stored position");
-        assert_eq!(guard.depth, 10);
+        let hash_data = table.get(&pos).expect("Should find stored position");
+        assert_eq!(hash_data.depth, 10);
     }
 
     #[test]
@@ -523,16 +446,16 @@ mod tests {
         assert!(table.get(&pos).is_some());
 
         // Test date increment clear
-        table.clear();
+        table.soft_clear();
         assert_eq!(table.date.load(Ordering::Relaxed), 1);
         assert!(table.get(&pos).is_some());
 
         // Test full clear when date reaches 255
         for _ in 0..254 {
-            table.clear();
+            table.soft_clear();
         }
         assert_eq!(table.date.load(Ordering::Relaxed), 255);
-        table.clear(); // This should trigger full clear
+        table.soft_clear(); // This should trigger full clear
         assert_eq!(table.date.load(Ordering::Relaxed), 1);
         assert!(table.get(&pos).is_none());
     }
@@ -546,8 +469,8 @@ mod tests {
         table.date.store(42, Ordering::Relaxed);
 
         // Verify date gets updated on get
-        let guard = table.get(&pos).expect("Should find stored position");
-        assert_eq!(guard.date, 42);
+        let hash_data = table.get(&pos).expect("Should find stored position");
+        assert_eq!(hash_data.date, 42);
     }
 
     #[test]
@@ -577,26 +500,8 @@ mod tests {
         assert!(table.get(&pos).is_some());
 
         // Cleanup should remove all entries
-        table.cleanup();
+        table.clear();
         assert!(table.get(&pos).is_none());
-    }
-
-    #[test]
-    fn test_force_store() {
-        let table = HashTable::new(1); // Single bucket
-        let pos = Position::new();
-
-        // Fill bucket with lower priority entries
-        for _ in 0..BUCKET_SIZE {
-            let random_pos = Position::new_random_with_discs(32);
-            table.store(&StoreArgs::from_pos_and_depth(&random_pos, 1));
-        }
-
-        // Force store should replace lowest priority entry
-        table.force_store(&StoreArgs::from_pos_and_depth(&pos, 10));
-        let result = table.get(&pos);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().depth, 10);
     }
 
     #[test]
@@ -618,8 +523,8 @@ mod tests {
 
             handles.push(thread::spawn(move || {
                 // Read operation
-                if let Some(guard) = table_clone.get(&pos_clone) {
-                    assert_eq!(guard.depth, 5);
+                if let Some(hash_data) = table_clone.get(&pos_clone) {
+                    assert_eq!(hash_data.depth, 5);
                 }
             }));
         }
@@ -688,24 +593,78 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_move() {
+    fn test_store_hash_data_update() {
         let table = HashTable::new(16);
         let pos = Position::new();
+
+        // Initial store
         let args = StoreArgs {
             position: &pos,
             depth: 5,
-            selectivity: 1,
-            cost: 1,
-            alpha: 0,
-            beta: 0,
+            selectivity: 2,
+            cost: 3,
+            alpha: -10,
+            beta: 10,
             score: 0,
             move_: 42,
         };
-
         table.store(&args);
-        table.remove_move(&pos, 42);
 
-        let data = table.get(&pos).unwrap();
-        assert_eq!(data.move_[0], NO_MOVE as u8);
+        // Update with same depth and selectivity but different score/move
+        let update_args = StoreArgs {
+            position: &pos,
+            depth: 5,       // Same depth
+            selectivity: 2, // Same selectivity
+            cost: 4,
+            alpha: -10,
+            beta: 10,
+            score: 5,
+            move_: 43,
+        };
+        table.store(&update_args);
+
+        let hash_data = table.get(&pos).expect("Should find stored position");
+        assert_eq!(hash_data.depth, 5); // Should remain unchanged
+        assert_eq!(hash_data.selectivity, 2); // Should remain unchanged
+        assert_eq!(hash_data.cost, 4); // Should take max of old and new
+        assert_eq!(hash_data.move_, [43, NO_MOVE as u8]); // Should update to new move
+    }
+
+    #[test]
+    fn test_store_hash_data_upgrade() {
+        let table = HashTable::new(16);
+        let pos = Position::new();
+
+        // Initial store
+        let args = StoreArgs {
+            position: &pos,
+            depth: 5,
+            selectivity: 2,
+            cost: 3,
+            alpha: -10,
+            beta: 10,
+            score: 0,
+            move_: 42,
+        };
+        table.store(&args);
+
+        // Upgrade with higher depth
+        let upgrade_args = StoreArgs {
+            position: &pos,
+            depth: 8,       // Higher depth triggers upgrade
+            selectivity: 3, // Different selectivity
+            cost: 4,
+            alpha: -10,
+            beta: 10,
+            score: 5,
+            move_: 43,
+        };
+        table.store(&upgrade_args);
+
+        let hash_data = table.get(&pos).expect("Should find stored position");
+        assert_eq!(hash_data.depth, 8); // Should upgrade to new depth
+        assert_eq!(hash_data.selectivity, 3); // Should upgrade to new selectivity
+        assert_eq!(hash_data.cost, 4); // Should take max of old and new
+        assert_eq!(hash_data.move_, [43, 42]); // Should prepend the new move
     }
 }

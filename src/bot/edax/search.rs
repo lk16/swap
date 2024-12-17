@@ -324,9 +324,9 @@ impl Search {
         self.shared.time.spent.store(0, Ordering::Relaxed);
 
         if !self.config.options.keep_date {
-            self.hash_table.clear();
-            self.pv_table.clear();
-            self.shallow_table.clear();
+            self.hash_table.soft_clear();
+            self.pv_table.soft_clear();
+            self.shallow_table.soft_clear();
         }
 
         {
