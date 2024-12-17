@@ -344,7 +344,7 @@ mod tests {
             let position = Position::new_random_with_discs(num_discs);
 
             // Get stable discs for current position
-            let stable = get_stable(position.player, position.opponent);
+            let stable = get_stable(position.player(), position.opponent());
 
             // Compute which discs can be flipped by any move
             let mut all_flipped = 0u64;

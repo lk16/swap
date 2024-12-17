@@ -96,8 +96,8 @@ impl MidgameSearch {
         const CORNERS: u64 = 0x8100000000000081u64; // Mask for corner positions
 
         // Calculate corner difference
-        let player_corners = (position.player & CORNERS).count_ones() as isize;
-        let opponent_corners = (position.opponent & CORNERS).count_ones() as isize;
+        let player_corners = (position.player() & CORNERS).count_ones() as isize;
+        let opponent_corners = (position.opponent() & CORNERS).count_ones() as isize;
         let corner_diff = player_corners - opponent_corners;
 
         // Calculate move difference

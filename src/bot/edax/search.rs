@@ -2018,7 +2018,7 @@ impl Search {
 
         if parity > 0 && parity < 15 {
             for empty in empties.iter_odd(parity).chain(empties.iter_even(parity)) {
-                if NEIGHBOUR[empty.x as usize] & self.state.position().opponent != 0 {
+                if NEIGHBOUR[empty.x as usize] & self.state.position().opponent() != 0 {
                     let move_ = Move::new(self.state.position(), empty.x);
                     if move_.flipped != 0 {
                         self.state.update_endgame(&move_);
@@ -2039,7 +2039,7 @@ impl Search {
             }
         } else {
             for empty in empties.iter() {
-                if NEIGHBOUR[empty.x as usize] & self.state.position().opponent != 0 {
+                if NEIGHBOUR[empty.x as usize] & self.state.position().opponent() != 0 {
                     let move_ = Move::new(self.state.position(), empty.x);
                     if move_.flipped != 0 {
                         self.state.update_endgame(&move_);
@@ -2121,7 +2121,7 @@ impl Search {
 
         let mut best_score = -SCORE_INF;
 
-        if NEIGHBOUR[x1] & self.state.position().opponent != 0 {
+        if NEIGHBOUR[x1] & self.state.position().opponent() != 0 {
             let move_ = Move::new(self.state.position(), x1 as i32);
             if move_.flipped != 0 {
                 self.state.update_endgame(&move_);
@@ -2134,7 +2134,7 @@ impl Search {
             }
         }
 
-        if NEIGHBOUR[x2] & self.state.position().opponent != 0 {
+        if NEIGHBOUR[x2] & self.state.position().opponent() != 0 {
             let move_ = Move::new(self.state.position(), x2 as i32);
             if move_.flipped != 0 {
                 self.state.update_endgame(&move_);
@@ -2149,7 +2149,7 @@ impl Search {
             }
         }
 
-        if NEIGHBOUR[x3] & self.state.position().opponent != 0 {
+        if NEIGHBOUR[x3] & self.state.position().opponent() != 0 {
             let move_ = Move::new(self.state.position(), x3 as i32);
             if move_.flipped != 0 {
                 self.state.update_endgame(&move_);
@@ -2164,7 +2164,7 @@ impl Search {
             }
         }
 
-        if NEIGHBOUR[x4] & self.state.position().opponent != 0 {
+        if NEIGHBOUR[x4] & self.state.position().opponent() != 0 {
             let move_ = Move::new(self.state.position(), x4 as i32);
             if move_.flipped != 0 {
                 self.state.update_endgame(&move_);
@@ -2222,7 +2222,7 @@ impl Search {
 
         // TODO #15 Further optimization: try making Position::new_from_parent_and_move return Option<Position>
 
-        if NEIGHBOUR[x1] & self.state.position().opponent != 0 {
+        if NEIGHBOUR[x1] & self.state.position().opponent() != 0 {
             let (next, flipped) = Position::new_from_parent_and_move(self.state.position(), x1);
             if flipped != 0 {
                 best_score = -Self::solve_2(&next, -beta, x2, x3);
@@ -2232,7 +2232,7 @@ impl Search {
             }
         }
 
-        if NEIGHBOUR[x2] & self.state.position().opponent != 0 {
+        if NEIGHBOUR[x2] & self.state.position().opponent() != 0 {
             let (next, flipped) = Position::new_from_parent_and_move(self.state.position(), x2);
             if flipped != 0 {
                 let score = -Self::solve_2(&next, -beta, x1, x3);
@@ -2244,7 +2244,7 @@ impl Search {
             }
         }
 
-        if NEIGHBOUR[x3] & self.state.position().opponent != 0 {
+        if NEIGHBOUR[x3] & self.state.position().opponent() != 0 {
             let (next, flipped) = Position::new_from_parent_and_move(self.state.position(), x3);
             if flipped != 0 {
                 let score = -Self::solve_2(&next, -beta, x1, x2);
@@ -2255,7 +2255,7 @@ impl Search {
         }
 
         if best_score == -SCORE_INF {
-            if NEIGHBOUR[x1] & self.state.position().player != 0 {
+            if NEIGHBOUR[x1] & self.state.position().player() != 0 {
                 let mut next = *self.state.position();
                 next.pass();
                 best_score = -Self::solve_2(&next, alpha, x2, x3);
@@ -2264,7 +2264,7 @@ impl Search {
                 }
             }
 
-            if NEIGHBOUR[x2] & self.state.position().player != 0 {
+            if NEIGHBOUR[x2] & self.state.position().player() != 0 {
                 let mut next = *self.state.position();
                 next.pass();
                 let score = -Self::solve_2(&next, alpha, x1, x3);
@@ -2275,7 +2275,7 @@ impl Search {
                 }
             }
 
-            if NEIGHBOUR[x3] & self.state.position().player != 0 {
+            if NEIGHBOUR[x3] & self.state.position().player() != 0 {
                 let mut next = *self.state.position();
                 next.pass();
                 let score = -Self::solve_2(&next, alpha, x1, x2);
@@ -2300,7 +2300,7 @@ impl Search {
 
         let mut best_score = -SCORE_INF;
 
-        if NEIGHBOUR[x1] & position.opponent != 0 {
+        if NEIGHBOUR[x1] & position.opponent() != 0 {
             let (next, flipped) = Position::new_from_parent_and_move(position, x1);
             if flipped != 0 {
                 best_score = -Self::solve_1(&next, beta, x2);
@@ -2308,7 +2308,7 @@ impl Search {
         }
 
         if best_score < beta {
-            if NEIGHBOUR[x2] & position.opponent != 0 {
+            if NEIGHBOUR[x2] & position.opponent() != 0 {
                 let (next, flipped) = Position::new_from_parent_and_move(position, x2);
                 if flipped != 0 {
                     let score = -Self::solve_1(&next, alpha, x1);
@@ -2321,14 +2321,14 @@ impl Search {
             if best_score == -SCORE_INF {
                 best_score = SCORE_INF;
 
-                if NEIGHBOUR[x1] & position.player != 0 {
+                if NEIGHBOUR[x1] & position.player() != 0 {
                     let mut next = *position;
                     next.pass();
                     best_score = -Self::solve_1(&next, alpha, x2);
                 }
 
                 if best_score > alpha {
-                    if NEIGHBOUR[x2] & position.player != 0 {
+                    if NEIGHBOUR[x2] & position.player() != 0 {
                         let mut next = *position;
                         next.pass();
                         let score = -Self::solve_1(&next, alpha, x1);
@@ -2351,20 +2351,20 @@ impl Search {
     ///
     /// Like search_solve_1() in Edax
     fn solve_1(position: &Position, beta: i32, x: usize) -> i32 {
-        let mut score = 2 * position.opponent.count_ones() as i32 - SCORE_MAX;
+        let mut score = 2 * position.opponent().count_ones() as i32 - SCORE_MAX;
 
-        let mut n_flips = count_last_flip(x, position.player) as i32;
+        let mut n_flips = count_last_flip(x, position.player()) as i32;
 
         if n_flips != 0 {
             score -= n_flips;
         } else if score >= 0 {
             score += 2;
             if score < beta {
-                n_flips = count_last_flip(x, position.opponent) as i32;
+                n_flips = count_last_flip(x, position.opponent()) as i32;
                 score += n_flips;
             }
         } else if score < beta {
-            let n_flips = count_last_flip(x, position.opponent) as i32;
+            let n_flips = count_last_flip(x, position.opponent()) as i32;
             if n_flips != 0 {
                 score += n_flips + 2;
             }

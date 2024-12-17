@@ -1026,10 +1026,10 @@ mod tests {
             let pos = moves.trailing_zeros() as usize;
 
             // The move should be on an empty square
-            assert_eq!((position.player | position.opponent) & (1 << pos), 0);
+            assert!(position.is_empty(pos));
 
-            let last_flip_simple = count_last_flip_simple(pos, position.player);
-            let last_flip = count_last_flip(pos, position.player);
+            let last_flip_simple = count_last_flip_simple(pos, position.player());
+            let last_flip = count_last_flip(pos, position.player());
 
             let get_flipped = 2 * position.get_flipped(pos).count_ones();
 

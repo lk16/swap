@@ -92,7 +92,7 @@ impl Move {
             return !position.has_moves();
         }
 
-        if (position.player | position.opponent) & (1u64 << x) != 0 {
+        if (position.player() | position.opponent()) & (1u64 << x) != 0 {
             return false;
         }
 
@@ -103,7 +103,7 @@ impl Move {
     ///
     /// Like move_wipeout() in Edax
     pub fn is_wipeout(&self, position: &Position) -> bool {
-        self.flipped == position.opponent
+        self.flipped == position.opponent()
     }
 
     /// Update the position with the move.
@@ -113,9 +113,7 @@ impl Move {
         if self.x == PASS as i32 {
             position.pass();
         } else {
-            position.player |= self.flipped | (1u64 << self.x as usize);
-            position.opponent ^= self.flipped;
-            std::mem::swap(&mut position.player, &mut position.opponent);
+            position.do_move_with_flipped(self.x as usize, self.flipped);
         }
     }
 
@@ -126,9 +124,7 @@ impl Move {
         if self.x == PASS as i32 {
             position.pass();
         } else {
-            std::mem::swap(&mut position.player, &mut position.opponent);
-            position.player &= !(self.flipped | (1u64 << self.x as usize));
-            position.opponent |= self.flipped;
+            position.undo_move(self.x as usize, self.flipped);
         }
     }
 }

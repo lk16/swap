@@ -74,7 +74,8 @@ impl SearchState {
     pub fn new(position: &Position) -> Self {
         let n_empties = position.count_empty() as i32;
 
-        let empties_bitset = !(position.player | position.opponent);
+        // TODO create helper function for this
+        let empties_bitset = !(position.player() | position.opponent());
 
         let mut parity = 0;
         for x in PRESORTED_X {
@@ -191,7 +192,7 @@ impl SearchState {
                 if moves & empty.b != 0 {
                     let flipped = self.position.get_flipped(empty.x as usize);
 
-                    if flipped == self.position.opponent {
+                    if flipped == self.position.opponent() {
                         return SCORE_MAX;
                     }
                     self.eval.do_move(empty.x as usize, flipped);
@@ -490,7 +491,7 @@ mod tests {
 
             #[allow(clippy::needless_range_loop)]
             for i in 0..64 {
-                if (self.position.player | self.position.opponent) & (1 << i) == 0 {
+                if self.position.is_empty(i) {
                     expected_parity ^= QUADRANT_ID[i];
                 }
             }
@@ -503,10 +504,14 @@ mod tests {
 
         fn check_invariant_empties(&self) {
             let expected_empties = (0..64)
-                .filter(|&i| (self.position.player | self.position.opponent) & (1 << i) == 0)
+                .filter(|&i| self.position.is_empty(i))
                 .collect::<HashSet<_>>();
 
-            let empties = self.empties.iter().map(|s| s.x).collect::<HashSet<_>>();
+            let empties = self
+                .empties
+                .iter()
+                .map(|s| s.x as usize)
+                .collect::<HashSet<_>>();
             assert_eq!(empties, expected_empties);
         }
 
@@ -731,7 +736,7 @@ mod tests {
                     if moves & empty.b != 0 {
                         let flipped = self.position.get_flipped(empty.x as usize);
 
-                        if flipped == self.position.opponent {
+                        if flipped == self.position.opponent() {
                             return SCORE_MAX;
                         }
 
@@ -778,7 +783,7 @@ mod tests {
                     if moves & empty.b != 0 {
                         let flipped = self.position.get_flipped(empty.x as usize);
 
-                        if flipped == self.position.opponent {
+                        if flipped == self.position.opponent() {
                             return SCORE_MAX;
                         }
 

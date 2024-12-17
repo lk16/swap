@@ -518,8 +518,8 @@ mod tests {
     fn test_iter_even_odd() {
         for position in test_positions() {
             let empties = (0..64)
-                .filter(|&x| (position.player | position.opponent) & (1 << x as usize) == 0)
-                .map(|x| Square::new(x as usize))
+                .filter(|&x| position.is_empty(x))
+                .map(Square::new)
                 .collect::<Vec<_>>();
 
             let list = EmptiesList::from_iter_with_size(

@@ -1343,8 +1343,8 @@ mod tests {
                     continue;
                 }
 
-                let player = position.player;
-                let opponent = position.opponent;
+                let player = position.player();
+                let opponent = position.opponent();
 
                 let simple = get_flipped_simple(player, opponent, move_);
                 let get_flipped = get_flipped(player, opponent, move_);

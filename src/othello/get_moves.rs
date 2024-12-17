@@ -35,6 +35,21 @@ pub fn get_moves(player: u64, opponent: u64) -> u64 {
 
 #[cfg(test)]
 pub mod tests {
+    /// Shift a bitset in a given direction.
+    fn shift(bitset: u64, dir: i32) -> u64 {
+        match dir {
+            -9 => (bitset & 0xfefefefefefefefe) << 7,
+            -8 => bitset << 8,
+            -7 => (bitset & 0x7f7f7f7f7f7f7f7f) << 9,
+            -1 => (bitset & 0xfefefefefefefefe) >> 1,
+            1 => (bitset & 0x7f7f7f7f7f7f7f7f) << 1,
+            7 => (bitset & 0x7f7f7f7f7f7f7f7f) >> 7,
+            8 => bitset >> 8,
+            9 => (bitset & 0xfefefefefefefefe) >> 9,
+            _ => panic!("Invalid direction"),
+        }
+    }
+
     use super::*;
     use crate::othello::position::{print_bitset, Position, XOT_POSITIONS};
 
@@ -46,11 +61,11 @@ pub mod tests {
         const DIRECTIONS: [i32; 8] = [-9, -8, -7, -1, 1, 7, 8, 9];
 
         for dir in DIRECTIONS {
-            let mut candidates = Position::shift(player, dir) & opponent;
+            let mut candidates = shift(player, dir) & opponent;
 
             while candidates != 0 {
-                moves |= empty & Position::shift(candidates, dir);
-                candidates = Position::shift(candidates, dir) & opponent;
+                moves |= empty & shift(candidates, dir);
+                candidates = shift(candidates, dir) & opponent;
             }
         }
         moves
@@ -103,13 +118,14 @@ pub mod tests {
 
     #[test]
     fn test_get_moves_simple() {
-        let test_cases = move_test_cases();
+        let positions = move_test_cases();
 
-        for test_case in test_cases {
-            let simple = get_moves_simple(test_case.player, test_case.opponent);
-            let regular = get_moves(test_case.player, test_case.opponent);
+        for position in positions {
+            let player = position.player();
+            let opponent = position.opponent();
 
-            let position = Position::new_from_bitboards(test_case.player, test_case.opponent);
+            let simple = get_moves_simple(player, opponent);
+            let regular = get_moves(player, opponent);
 
             println!("Position:");
             println!("{}", position);

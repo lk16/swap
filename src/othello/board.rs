@@ -14,6 +14,8 @@ pub fn opponent(color: usize) -> usize {
     1 - color
 }
 
+// TODO make fields private like in Position
+
 /// Representation of an Othello board.
 /// This is essentially a `Position` that keeps track of whose turn it is.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -116,13 +118,13 @@ impl Board {
 
         for i in 0..64 {
             let mask = 1u64 << i;
-            if self.position.player & mask != 0 {
+            if self.position.player() & mask != 0 {
                 if self.turn == BLACK {
                     black.push(i);
                 } else {
                     white.push(i);
                 }
-            } else if self.position.opponent & mask != 0 {
+            } else if self.position.opponent() & mask != 0 {
                 if self.turn == BLACK {
                     white.push(i);
                 } else {
@@ -157,18 +159,18 @@ impl Board {
     /// Get the bitboard of black discs.
     pub fn black_discs(&self) -> u64 {
         if self.turn == BLACK {
-            self.position.player
+            self.position.player()
         } else {
-            self.position.opponent
+            self.position.opponent()
         }
     }
 
     /// Get the bitboard of white discs.
     pub fn white_discs(&self) -> u64 {
         if self.turn == BLACK {
-            self.position.opponent
+            self.position.opponent()
         } else {
-            self.position.player
+            self.position.player()
         }
     }
 
@@ -193,8 +195,8 @@ mod tests {
     fn test_new_board() {
         let board = Board::new();
         assert!(board.turn == BLACK);
-        assert_eq!(board.position.player, 0x0000000810000000);
-        assert_eq!(board.position.opponent, 0x0000001008000000);
+        assert_eq!(board.position.player(), 0x0000000810000000);
+        assert_eq!(board.position.opponent(), 0x0000001008000000);
     }
 
     #[test]
@@ -209,8 +211,8 @@ mod tests {
         board.do_move(19); // D3
         assert!(board.turn == WHITE);
 
-        assert_eq!(board.position.player, 0x0000001000000000);
-        assert_eq!(board.position.opponent, 0x0000000818080000);
+        assert_eq!(board.position.player(), 0x0000001000000000);
+        assert_eq!(board.position.opponent(), 0x0000000818080000);
     }
 
     #[test]
@@ -333,8 +335,8 @@ mod tests {
         let position = Position::new();
         let board = Board::combine(position, WHITE);
         assert!(board.turn == WHITE);
-        assert_eq!(board.position.player, 0x0000000810000000);
-        assert_eq!(board.position.opponent, 0x0000001008000000);
+        assert_eq!(board.position.player(), 0x0000000810000000);
+        assert_eq!(board.position.opponent(), 0x0000001008000000);
     }
 
     #[test]
@@ -419,12 +421,12 @@ mod tests {
 
         // Original board should be unchanged
         assert!(board.turn == BLACK);
-        assert_eq!(board.position.player, 0x0000000810000000);
-        assert_eq!(board.position.opponent, 0x0000001008000000);
+        assert_eq!(board.position.player(), 0x0000000810000000);
+        assert_eq!(board.position.opponent(), 0x0000001008000000);
 
         // Cloned board should reflect the move
         assert!(cloned.turn == WHITE);
-        assert_eq!(cloned.position.player, 0x0000001000000000);
-        assert_eq!(cloned.position.opponent, 0x0000000818080000);
+        assert_eq!(cloned.position.player(), 0x0000001000000000);
+        assert_eq!(cloned.position.opponent(), 0x0000000818080000);
     }
 }
