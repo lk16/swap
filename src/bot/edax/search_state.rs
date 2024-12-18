@@ -246,11 +246,14 @@ impl SearchState {
         } else {
             bestscore = -SCORE_INF;
 
-            // Clone empties to avoid problems with borrow checker
-            // TODO #15 Further optimization: do not clone empties
-            let empties = self.empties.clone();
+            // SAFETY:
+            // - EmptiesList `self.empties` won't be dropped during iteration
+            let iter = unsafe { self.empties.iter_unchecked() };
 
-            for empty in empties.iter() {
+            for empty in iter {
+                // SAFETY: Iterator guarantees pointer validity
+                let empty = unsafe { &*empty };
+
                 if moves & empty.b != 0 {
                     let move_ = Move::new(&self.position, empty.x);
                     self.update_midgame(&move_);
