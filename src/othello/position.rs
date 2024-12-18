@@ -464,6 +464,11 @@ impl Position {
     pub fn is_empty(&self, index: usize) -> bool {
         (self.player | self.opponent) & (1 << index) == 0
     }
+
+    /// Get the bitset of empty squares.
+    pub fn empties(&self) -> u64 {
+        !(self.player | self.opponent)
+    }
 }
 
 pub struct MoveIndices {
@@ -984,11 +989,14 @@ mod tests {
     fn test_is_empty() {
         let position = Position::new();
 
+        let empties_bitset = position.empties();
+
         for index in 0usize..64 {
             let mask = 1 << index;
 
             let expected_empty = position.player & mask == 0 && position.opponent & mask == 0;
             assert_eq!(position.is_empty(index), expected_empty);
+            assert_eq!(empties_bitset & mask != 0, expected_empty);
         }
     }
 

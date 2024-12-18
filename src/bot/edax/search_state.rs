@@ -72,14 +72,12 @@ impl SearchState {
     ///
     /// Includes logic of Edax's search_setup()
     pub fn new(position: &Position) -> Self {
-        let n_empties = position.count_empty() as i32;
-
-        // TODO create helper function for this
-        let empties_bitset = !(position.player() | position.opponent());
+        let empties = position.empties();
+        let n_empties = empties.count_ones() as i32;
 
         let mut parity = 0;
         for x in PRESORTED_X {
-            if empties_bitset & (1 << x) != 0 {
+            if empties & (1 << x) != 0 {
                 parity ^= QUADRANT_ID[x];
             }
         }
@@ -87,7 +85,7 @@ impl SearchState {
         let empties = EmptiesList::from_iter_with_size(
             PRESORTED_X
                 .iter()
-                .filter(|&x| empties_bitset & (1 << x) != 0)
+                .filter(|&x| empties & (1 << x) != 0)
                 .map(|x| Square::new(*x)),
             n_empties as usize,
         );
