@@ -5,12 +5,13 @@ use crate::bot::Bot;
 use super::r#const::BLACK;
 use super::search::Search;
 
+/// EdaxBot is a bot that uses the Edax engine to get moves.
 pub struct EdaxBot;
 
 pub const EDAX_LEVEL: i32 = 6;
 
-/// EdaxBot is a bot that the Edax engine to get moves.
 impl Bot for EdaxBot {
+    /// Get the best move from the current position.
     fn get_move(&mut self, position: &Position) -> usize {
         let moves = position.get_moves();
 
