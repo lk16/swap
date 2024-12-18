@@ -84,6 +84,8 @@ impl Move {
     ///
     /// Like board_check_move() in Edax
     pub fn is_legal(&self, position: &Position) -> bool {
+        debug_assert!(self.x != NO_MOVE as i32);
+
         // TODO #15 Further optimization: this function checks too many things for certain call-sites
 
         let x = self.x as usize;
@@ -103,6 +105,8 @@ impl Move {
     ///
     /// Like move_wipeout() in Edax
     pub fn is_wipeout(&self, position: &Position) -> bool {
+        debug_assert!(self.x != NO_MOVE as i32);
+
         self.flipped == position.opponent()
     }
 
@@ -110,6 +114,8 @@ impl Move {
     ///
     /// Like board_update() in Edax
     pub fn update(&self, position: &mut Position) {
+        debug_assert!(self.x != NO_MOVE as i32);
+
         if self.x == PASS as i32 {
             position.pass();
         } else {
@@ -121,6 +127,8 @@ impl Move {
     ///
     /// Like board_restore() in Edax
     pub fn restore(&self, position: &mut Position) {
+        debug_assert!(self.x != NO_MOVE as i32);
+
         if self.x == PASS as i32 {
             position.pass();
         } else {
@@ -241,10 +249,10 @@ impl Index<usize> for MoveList {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
-
     use super::*;
+    use crate::othello::position::Position;
     use rand::Rng;
+    use std::cell::Cell;
 
     fn validate_list(list: &MoveList, expected_items: &[i32]) {
         let items = list.iter().map(|m| m.x).collect::<Vec<_>>();
@@ -389,8 +397,6 @@ mod tests {
 
     #[test]
     fn test_new() {
-        use crate::othello::position::Position;
-
         // Create a position with some legal moves
         let position = Position::new();
         let list = MoveList::new(&position);
@@ -431,5 +437,36 @@ mod tests {
         assert_eq!(list[0].x, 42);
         assert_eq!(list[0].score.get(), 100);
         assert_eq!(list.first().unwrap().x, 42);
+    }
+
+    #[test]
+    fn test_sort_by_cost() {
+        let mut list = pool_list_from_array(&[1, 2, 3, 4]);
+        let mut hash_data = HashData::default();
+
+        // Set hash data moves
+        hash_data.move_[0] = 2; // This move should get u32::MAX cost
+        hash_data.move_[1] = 4; // This move should get u32::MAX - 1 cost
+
+        list.sort_by_cost(&hash_data);
+
+        // Verify the moves matching hash_data are first (in order)
+        assert_eq!(list[0].x, 2); // Should be first (cost = u32::MAX)
+        assert_eq!(list[1].x, 4); // Should be second (cost = u32::MAX - 1)
+
+        // Verify costs were set correctly
+        assert_eq!(list[0].cost.get(), u32::MAX);
+        assert_eq!(list[1].cost.get(), u32::MAX - 1);
+    }
+
+    #[test]
+    fn test_sort_by_cost_no_hash_matches() {
+        let mut list = pool_list_from_array(&[1, 2, 3]);
+        let hash_data = HashData::default(); // moves will be 0
+
+        list.sort_by_cost(&hash_data);
+
+        // Original order should be maintained since no moves match hash data
+        validate_list(&list, &[1, 2, 3]);
     }
 }
