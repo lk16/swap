@@ -277,4 +277,6 @@ mod tests {
         node.set_move_score(0, 33);
         assert_eq!(node.inner.lock().unwrap().move_list[0].score.get(), 33);
     }
+
+    // TODO #8: add more tests once we use this with concurrent search
 }
