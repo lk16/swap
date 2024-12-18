@@ -274,16 +274,21 @@ impl Stop {
     }
 }
 
-/// Number of moves in game including passing moves.
+/// Over-estimation ofnumber of moves in game including passing moves.
 pub const GAME_SIZE: usize = 80;
 
 /// Indicates the type of node in a search tree.
 #[repr(u8)]
 #[derive(Default, Copy, Clone)]
 pub enum NodeType {
+    /// Main line of best play, searched most thoroughly with full alpha-beta window
     #[default]
     PvNode = 0,
+
+    /// Node where we try to prove position exceeds beta (too good), used in probcut searches
     CutNode = 1,
+
+    /// Node where we examine all moves to establish lower bound, used in probcut searches
     AllNode = 2,
 }
 
