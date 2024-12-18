@@ -275,7 +275,7 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-/// A zero-cost wrapper that owns the iterator state of an EmptiesList
+/// Iterator that does not borrow self.
 pub struct UncheckedIter {
     next: Option<NonNull<Node>>,
     sentinel: NonNull<Node>,
