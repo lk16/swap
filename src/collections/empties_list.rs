@@ -235,6 +235,18 @@ impl EmptiesList {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Creates an iterator that doesn't borrow self, using raw pointers internally.
+    ///
+    /// # Safety
+    /// Caller must ensure that:
+    /// - The EmptiesList is not dropped while the iterator is in use
+    pub unsafe fn iter_unchecked(&self) -> UncheckedIter {
+        UncheckedIter {
+            next: self.nodes[0].next,
+            sentinel: NonNull::new_unchecked(self.nodes.as_ptr() as *mut Node),
+        }
+    }
 }
 
 /// An iterator over all squares in the list.
@@ -258,6 +270,32 @@ impl<'a> Iterator for Iter<'a> {
         unsafe {
             // Get the next node
             self.next = (*current.as_ptr()).next;
+            Some(&(*current.as_ptr()).data)
+        }
+    }
+}
+
+/// Iterator that does not borrow self.
+pub struct UncheckedIter {
+    next: Option<NonNull<Node>>,
+    sentinel: NonNull<Node>,
+}
+
+impl Iterator for UncheckedIter {
+    type Item = *const Square;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.next?;
+
+        // Stop if we've reached the sentinel
+        if current.as_ptr() == self.sentinel.as_ptr() {
+            return None;
+        }
+
+        unsafe {
+            // Get the next node
+            self.next = (*current.as_ptr()).next;
+            // Return pointer to the square data
             Some(&(*current.as_ptr()).data)
         }
     }
@@ -574,5 +612,23 @@ mod tests {
         let list = from_int_array(&[]);
         assert_eq!(list.len(), 0);
         assert!(list.is_empty());
+    }
+
+    #[test]
+    fn test_iter_unchecked() {
+        let list = from_int_array(&[11, 22, 33]);
+
+        // Collect values using iter_unchecked
+        let mut values = Vec::new();
+        unsafe {
+            for square_ptr in list.iter_unchecked() {
+                values.push((*square_ptr).x);
+            }
+        }
+
+        // Compare with safe iterator
+        let expected: Vec<_> = list.iter().map(|s| s.x).collect();
+        assert_eq!(values, expected);
+        assert_eq!(values, vec![11, 22, 33]);
     }
 }

@@ -72,14 +72,12 @@ impl SearchState {
     ///
     /// Includes logic of Edax's search_setup()
     pub fn new(position: &Position) -> Self {
-        let n_empties = position.count_empty() as i32;
-
-        // TODO create helper function for this
-        let empties_bitset = !(position.player() | position.opponent());
+        let empties = position.empties();
+        let n_empties = empties.count_ones() as i32;
 
         let mut parity = 0;
         for x in PRESORTED_X {
-            if empties_bitset & (1 << x) != 0 {
+            if empties & (1 << x) != 0 {
                 parity ^= QUADRANT_ID[x];
             }
         }
@@ -87,7 +85,7 @@ impl SearchState {
         let empties = EmptiesList::from_iter_with_size(
             PRESORTED_X
                 .iter()
-                .filter(|&x| empties_bitset & (1 << x) != 0)
+                .filter(|&x| empties & (1 << x) != 0)
                 .map(|x| Square::new(*x)),
             n_empties as usize,
         );
@@ -168,8 +166,7 @@ impl SearchState {
     ///
     /// Like search_eval_1() in Edax
     pub fn eval_1(&mut self, alpha: i32, mut beta: i32) -> i32 {
-        let weights =
-            &EVAL_WEIGHT[(self.eval.player() ^ 1) as usize][(61 - self.n_empties) as usize];
+        let weights = &EVAL_WEIGHT[(self.eval.player() ^ 1) as usize][self.eval.empty_index() + 1];
         let mut bestscore;
 
         let moves = self.position.get_moves();
@@ -177,7 +174,7 @@ impl SearchState {
         if moves == 0 {
             if self.position.opponent_has_moves() {
                 self.update_pass_midgame();
-                bestscore = -self.eval_1(beta, alpha);
+                bestscore = -self.eval_1(-beta, -alpha);
                 self.restore_pass_midgame();
             } else {
                 // game over
@@ -188,7 +185,15 @@ impl SearchState {
             if beta >= SCORE_MAX {
                 beta = SCORE_MAX - 1;
             }
-            for empty in self.empties.iter() {
+
+            // SAFETY:
+            // - EmptiesList `self.empties` won't be dropped during iteration
+            let iter = unsafe { self.empties.iter_unchecked() };
+
+            for empty in iter {
+                // SAFETY: Iterator guarantees pointer validity
+                let empty = unsafe { &*empty };
+
                 if moves & empty.b != 0 {
                     let flipped = self.position.get_flipped(empty.x as usize);
 
@@ -205,6 +210,8 @@ impl SearchState {
 
                     self.eval.undo_move(empty.x as usize, flipped);
 
+                    // TODO #15 optimization: use branchless code like this:
+                    // score = (score + ((64 ^ (score >> 31)) - (score >> 31))) >> 7;
                     if score > 0 {
                         score += 64;
                     } else {
@@ -248,11 +255,14 @@ impl SearchState {
         } else {
             bestscore = -SCORE_INF;
 
-            // Clone empties to avoid problems with borrow checker
-            // TODO #15 Further optimization: do not clone empties
-            let empties = self.empties.clone();
+            // SAFETY:
+            // - EmptiesList `self.empties` won't be dropped during iteration
+            let iter = unsafe { self.empties.iter_unchecked() };
 
-            for empty in empties.iter() {
+            for empty in iter {
+                // SAFETY: Iterator guarantees pointer validity
+                let empty = unsafe { &*empty };
+
                 if moves & empty.b != 0 {
                     let move_ = Move::new(&self.position, empty.x);
                     self.update_midgame(&move_);
@@ -714,108 +724,62 @@ mod tests {
     }
 
     impl SearchState {
-        fn eval_1_naive(&mut self, alpha: i32, mut beta: i32) -> i32 {
+        fn eval_naive(&mut self, depth: i32, mut alpha: i32, beta: i32) -> i32 {
+            if depth == 0 {
+                return self.eval_0();
+            }
+
             let moves = self.position.get_moves();
 
             if moves == 0 {
                 if self.position.opponent_has_moves() {
                     self.update_pass_midgame();
-                    let score = -self.eval_1_naive(beta, alpha);
+                    let score = -self.eval_naive(depth, -beta, -alpha);
                     self.restore_pass_midgame();
-                    score
+                    return score;
                 } else {
-                    self.solve()
+                    return self.solve();
                 }
-            } else {
-                let mut bestscore = -SCORE_INF;
-                if beta >= SCORE_MAX {
-                    beta = SCORE_MAX - 1;
-                }
+            }
 
-                for empty in self.empties.clone().iter() {
-                    if moves & empty.b != 0 {
-                        let flipped = self.position.get_flipped(empty.x as usize);
+            let mut bestscore = -SCORE_INF;
 
-                        if flipped == self.position.opponent() {
-                            return SCORE_MAX;
-                        }
+            for empty in self.empties.clone().iter() {
+                if moves & empty.b != 0 {
+                    let flipped = self.position.get_flipped(empty.x as usize);
 
-                        let move_ = Move::new(&self.position, empty.x);
-                        self.update_midgame(&move_);
-                        let score = -self.eval_0();
-                        self.restore_midgame(&move_);
+                    if flipped == self.position.opponent() {
+                        return SCORE_MAX;
+                    }
 
-                        if score > bestscore {
-                            bestscore = score;
-                            if bestscore >= beta {
-                                break;
-                            }
+                    let move_ = Move::new(&self.position, empty.x);
+                    self.update_midgame(&move_);
+                    let score = -self.eval_naive(depth - 1, -beta, -alpha);
+                    self.restore_midgame(&move_);
+
+                    if score > bestscore {
+                        bestscore = score;
+                        if bestscore >= beta {
+                            break;
+                        } else if bestscore > alpha {
+                            alpha = bestscore;
                         }
                     }
                 }
-
-                if bestscore <= SCORE_MIN {
-                    bestscore = SCORE_MIN + 1;
-                } else if bestscore >= SCORE_MAX {
-                    bestscore = SCORE_MAX - 1;
-                }
-
-                bestscore
             }
-        }
 
-        fn eval_2_naive(&mut self, mut alpha: i32, beta: i32) -> i32 {
-            let moves = self.position.get_moves();
-
-            if moves == 0 {
-                if self.position.opponent_has_moves() {
-                    self.update_pass_midgame();
-                    let score = -self.eval_2_naive(-beta, -alpha);
-                    self.restore_pass_midgame();
-                    score
-                } else {
-                    self.solve()
-                }
-            } else {
-                let mut bestscore = -SCORE_INF;
-
-                for empty in self.empties.clone().iter() {
-                    if moves & empty.b != 0 {
-                        let flipped = self.position.get_flipped(empty.x as usize);
-
-                        if flipped == self.position.opponent() {
-                            return SCORE_MAX;
-                        }
-
-                        let move_ = Move::new(&self.position, empty.x);
-                        self.update_midgame(&move_);
-                        let score = -self.eval_1(-beta, -alpha);
-                        self.restore_midgame(&move_);
-
-                        if score > bestscore {
-                            bestscore = score;
-                            if bestscore >= beta {
-                                break;
-                            } else if bestscore > alpha {
-                                alpha = bestscore;
-                            }
-                        }
-                    }
-                }
-
-                if bestscore <= SCORE_MIN {
-                    bestscore = SCORE_MIN + 1;
-                } else if bestscore >= SCORE_MAX {
-                    bestscore = SCORE_MAX - 1;
-                }
-
-                bestscore
+            if bestscore <= SCORE_MIN {
+                bestscore = SCORE_MIN + 1;
+            } else if bestscore >= SCORE_MAX {
+                bestscore = SCORE_MAX - 1;
             }
+
+            bestscore
         }
     }
 
     #[test]
-    fn test_eval_1_naive() {
+    fn test_eval_1() {
         let bounds = [
             (SCORE_MIN, SCORE_MAX),
             (SCORE_MIN, 0),
@@ -831,13 +795,13 @@ mod tests {
             for (alpha, beta) in bounds {
                 let mut state = SearchState::new(&position);
 
-                assert_eq!(state.eval_1(alpha, beta), state.eval_1_naive(alpha, beta));
+                assert_eq!(state.eval_1(alpha, beta), state.eval_naive(1, alpha, beta));
             }
         }
     }
 
     #[test]
-    fn test_eval_2_naive() {
+    fn test_eval_2() {
         let bounds = [
             (SCORE_MIN, SCORE_MAX),
             (SCORE_MIN, 0),
@@ -852,7 +816,7 @@ mod tests {
 
             for (alpha, beta) in bounds {
                 let mut state = SearchState::new(&position);
-                assert_eq!(state.eval_2(alpha, beta), state.eval_2_naive(alpha, beta));
+                assert_eq!(state.eval_2(alpha, beta), state.eval_naive(2, alpha, beta));
             }
         }
     }

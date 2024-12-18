@@ -182,6 +182,8 @@ pub struct Eval {
     /// The player to evaluate from, 0 is player, 1 is opponent
     player: i32,
 
+    // TODO #15 optimization: eval_1() is likely called more often than eval_0(),
+    // so consider changing empty_index to be (61 - number of empty squares) instead
     /// Contains (60 - number of empty squares), used as index for EVAL_WEIGHT
     empty_index: usize,
 }
@@ -339,6 +341,8 @@ impl Eval {
             score += weights[self.features[i] as usize] as i32;
         }
 
+        // TODO #15 optimization: use branchless code like this:
+        // score = (score + ((64 ^ (score >> 31)) - (score >> 31))) >> 7;
         if score > 0 {
             score += 64;
         } else {
@@ -366,6 +370,11 @@ impl Eval {
     /// 1 is the opponent.
     pub fn player(&self) -> i32 {
         self.player
+    }
+
+    /// Get the empty index of the current evaluation.
+    pub fn empty_index(&self) -> usize {
+        self.empty_index
     }
 }
 

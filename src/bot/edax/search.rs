@@ -2091,6 +2091,7 @@ impl Search {
             )
         };
 
+        // TODO #15: Move this to top of function, since it doesn't depend on the empties.
         if let Some(score) = self.state.stability_cutoff_nws(alpha) {
             return score;
         }
@@ -2196,7 +2197,7 @@ impl Search {
     fn solve_3(&mut self, alpha: i32) -> i32 {
         let beta = alpha + 1;
 
-        // TODO #15 further optimization: add dedicated function for taking 4 empties using unwrap_unchecked()
+        // TODO #15 further optimization: add dedicated function for taking 3 empties using unwrap_unchecked()
         let (mut x1, mut x2, mut x3) = {
             let mut iter = self.state.empties().iter();
 
