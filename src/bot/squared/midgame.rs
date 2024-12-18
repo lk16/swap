@@ -1,9 +1,8 @@
 use std::time::{Duration, Instant};
 
-use crate::{
-    bot::{print_move_stats, print_search_header, print_total_stats, squared::bot::MIDGAME_DEPTH},
-    othello::position::Position,
-};
+use crate::{bot::squared::bot::MIDGAME_DEPTH, othello::position::Position};
+
+use super::{print_move_stats, print_search_header, print_total_stats};
 
 static MIN_MIDGAME_SCORE: isize = -64000;
 static MAX_MIDGAME_SCORE: isize = 64000;

@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::{
-    bot::{print_move_stats, print_search_header, print_total_stats},
+    bot::squared::{print_move_stats, print_search_header, print_total_stats},
     othello::position::Position,
 };
 
