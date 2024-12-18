@@ -507,4 +507,13 @@ pub mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_getters() {
+        let position = Position::new_random_with_discs(32);
+        let eval = Eval::new(&position);
+
+        assert_eq!(eval.player(), eval.player);
+        assert_eq!(eval.features(), &eval.features);
+    }
 }
