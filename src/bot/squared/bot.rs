@@ -1,11 +1,11 @@
-// This is inspired by my earlier project Squared, see http://github.com/lk16/squared
-
 use super::endgame::EndgameSearch;
 use super::midgame::MidgameSearch;
 use crate::othello::position::Position;
 
 use crate::bot::Bot;
 
+/// Othello bot by inspired by my earlier project Squared.
+/// See http://github.com/lk16/squared.
 pub struct SquaredBot;
 
 pub static MIDGAME_DEPTH: u32 = 8;

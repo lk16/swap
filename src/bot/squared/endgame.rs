@@ -1,15 +1,19 @@
 use std::time::{Duration, Instant};
 
 use crate::{
-    bot::{print_move_stats, print_search_header, print_total_stats},
+    bot::squared::{print_move_stats, print_search_header, print_total_stats},
     othello::position::Position,
 };
 
 pub static MIN_ENDGAME_SCORE: isize = -64;
 pub static MAX_ENDGAME_SCORE: isize = 64;
 
+/// Endgame search for SquaredBot.
 pub struct EndgameSearch {
+    /// Number of nodes visited
     nodes: u64,
+
+    /// The position being searched, changes during search.
     position: Position,
 }
 
@@ -20,6 +24,7 @@ impl Default for EndgameSearch {
 }
 
 impl EndgameSearch {
+    /// Create a new endgame search.
     pub fn new() -> Self {
         Self {
             nodes: 0,
@@ -27,7 +32,7 @@ impl EndgameSearch {
         }
     }
 
-    // TODO #5 bring from Edax, make this private again
+    /// Get the best move from the current position.
     pub fn get_move(&mut self, position: &Position) -> usize {
         let children = position.children_with_index();
 
@@ -59,13 +64,14 @@ impl EndgameSearch {
         best_move
     }
 
+    /// Negamax search for the best move.
     fn negamax(&mut self, mut alpha: isize, beta: isize) -> isize {
         self.nodes += 1;
 
-        let mut remaining_moves = self.position.get_moves();
+        let moves = self.position.iter_move_indices();
 
         // If no moves available
-        if remaining_moves == 0 {
+        if moves.is_empty() {
             // Check if the game is finished
             if self.position.get_opponent_moves() == 0 {
                 // Game is over, return final evaluation
@@ -79,9 +85,7 @@ impl EndgameSearch {
             return score;
         }
 
-        while remaining_moves != 0 {
-            let move_ = remaining_moves.trailing_zeros() as usize;
-
+        for move_ in moves {
             let flipped = self.position.do_move(move_);
             let score = -self.negamax(-beta, -alpha);
             self.position.undo_move(move_, flipped);
@@ -91,8 +95,6 @@ impl EndgameSearch {
             if alpha >= beta {
                 break; // Beta cutoff
             }
-
-            remaining_moves &= remaining_moves - 1;
         }
 
         alpha
@@ -102,7 +104,7 @@ impl EndgameSearch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::othello::ffo_problems::parse_ffo_problems;
+    use crate::othello::ffo_problems::tests::parse_ffo_problems;
 
     #[test]
     fn test_ffo_problems() {

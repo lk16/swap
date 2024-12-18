@@ -5,10 +5,11 @@ use crate::othello::position::Position;
 
 use super::Bot;
 
+/// A bot that plays random moves.
 pub struct RandomBot;
 
 impl Bot for RandomBot {
-    // Returns the index of a random valid move
+    /// Returns the index of a random valid move
     fn get_move(&mut self, position: &Position) -> usize {
         let moves = position.get_moves();
 
@@ -19,16 +20,7 @@ impl Bot for RandomBot {
         let move_count = moves.count_ones() as usize;
         let n = ThreadRng::default().next_u64() as usize % move_count;
 
-        // Find the nth set bit by skipping n bits and getting the index of the next one
-        let mut remaining = n;
-        let mut current_moves = moves;
-
-        while remaining > 0 {
-            current_moves &= current_moves - 1; // Clear the lowest set bit
-            remaining -= 1;
-        }
-
-        current_moves.trailing_zeros() as usize
+        position.iter_move_indices().nth(n).unwrap()
     }
 }
 

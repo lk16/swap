@@ -1,16 +1,17 @@
-use crate::bot::squared::endgame::EndgameSearch;
 use crate::othello::position::Position;
 
 use crate::bot::Bot;
 
-use super::midgame::MidgameSearch;
+use super::r#const::BLACK;
+use super::search::Search;
 
+/// EdaxBot is a bot that uses the Edax engine to get moves.
 pub struct EdaxBot;
 
-pub const MIDGAME_DEPTH: u32 = 10;
-pub const ENDGAME_DEPTH: u32 = 18;
+pub const EDAX_LEVEL: i32 = 6;
 
 impl Bot for EdaxBot {
+    /// Get the best move from the current position.
     fn get_move(&mut self, position: &Position) -> usize {
         let moves = position.get_moves();
 
@@ -22,11 +23,8 @@ impl Bot for EdaxBot {
             return moves.trailing_zeros() as usize;
         }
 
-        if position.count_empty() > ENDGAME_DEPTH {
-            let mut search = MidgameSearch::new(*position);
-            return search.get_move();
-        }
-
-        EndgameSearch::new().get_move(position)
+        let mut search = Search::new(position, BLACK, EDAX_LEVEL);
+        let result = search.run();
+        result.move_
     }
 }
