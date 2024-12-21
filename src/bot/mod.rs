@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use edax::bot::EdaxBot;
 use random::RandomBot;
 use squared::bot::SquaredBot;
@@ -10,11 +8,15 @@ pub mod edax;
 pub mod random;
 pub mod squared;
 
+/// A bot that can compute the best move for a position.
 pub trait Bot: Send {
-    // Returns the index of a valid move
+    /// Computes the best move for a position.
+    /// At least one move must be available in `position`.
+    /// Returns the index of the move.
     fn get_move(&mut self, position: &Position) -> usize;
 }
 
+/// Get a bot by name or `None` if not found`.
 pub fn get_bot(name: &str) -> Option<Box<dyn Bot>> {
     match name {
         "random" => Some(Box::new(RandomBot)),
@@ -24,11 +26,7 @@ pub fn get_bot(name: &str) -> Option<Box<dyn Bot>> {
     }
 }
 
-pub fn print_search_header(name: &'static str, is_endgame: bool, depth: u32) {
-    let search = if is_endgame { "endgame" } else { "midgame" };
-    println!("{} searching {} at depth {}", name, search, depth);
-}
-
+/// Format a score to be 4 characters wide.
 pub fn format_score(score: isize) -> String {
     let mut result = String::new();
 
@@ -51,6 +49,7 @@ pub fn format_score(score: isize) -> String {
     format!("{:>4}", result)
 }
 
+/// Format a number of nodes to be 8 characters wide.
 pub fn format_nodes(nodes: u64) -> String {
     let suffixes = [" ", "k", "M", "G", "T", "P", "E"];
     let mut value = nodes as f64;
@@ -72,40 +71,6 @@ pub fn format_nodes(nodes: u64) -> String {
     } else {
         format!("{:3.2}{}n", value, suffixes[suffix_idx])
     }
-}
-
-pub fn print_move_stats(
-    nodes: u64,
-    current_move: usize,
-    total_moves: usize,
-    score: isize,
-    alpha: isize,
-    duration: Duration,
-) {
-    let speed = (nodes as f64 / duration.as_secs_f64()) as u64;
-
-    println!(
-        "Move {:2}/{:2}: score {} {} | {} / {:.3}s = {}/s",
-        current_move + 1,
-        total_moves,
-        if score > alpha { "==" } else { "<=" },
-        format_score(score),
-        format_nodes(nodes),
-        duration.as_secs_f64(),
-        format_nodes(speed),
-    );
-}
-
-pub fn print_total_stats(total_nodes: u64, total_duration: Duration) {
-    let speed = (total_nodes as f64 / total_duration.as_secs_f64()) as u64;
-
-    println!(
-        "     Total:               | {} / {:.3}s = {}/s",
-        format_nodes(total_nodes),
-        total_duration.as_secs_f64(),
-        format_nodes(speed),
-    );
-    println!();
 }
 
 #[cfg(test)]

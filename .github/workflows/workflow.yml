@@ -26,5 +26,11 @@ jobs:
           mv data/eval.dat .
       - name: Test
         run: cargo test
-      - name: Test ffo problems
-        run: RUN_FFO_TESTS=1 cargo test bot::squared::endgame --release -- --nocapture
+      - name: Test squared endgame with ffo problems
+        env:
+          RUN_FFO_TESTS: 1
+        run: cargo test bot::squared::endgame::tests::test_ffo_problems --release -- --nocapture
+      - name: Test edax midgame
+        env:
+          RUN_EDAX_MIDGAME_TESTS: 1
+        run: cargo test bot::edax::midgame::tests::test_midgame_search --release -- --nocapture
