@@ -765,7 +765,7 @@ impl Search {
             position: self.state.position(),
             depth,
             selectivity: self.config.selectivity,
-            cost: cost.ilog2() as i32,
+            cost: Self::ilog2(cost),
             alpha,
             beta,
             score: bestscore,
@@ -854,7 +854,7 @@ impl Search {
             position: self.state.position(),
             depth,
             selectivity,
-            cost: cost.ilog2() as i32,
+            cost: Self::ilog2(cost),
             alpha,
             beta,
             score: bestscore,
@@ -1322,7 +1322,6 @@ impl Search {
             alpha,
             beta,
             depth,
-            move_list.len() as i32,
             None,
             self.state.height(),
         );
@@ -1412,7 +1411,7 @@ impl Search {
                     position: self.state.position(),
                     depth,
                     selectivity: self.config.selectivity,
-                    cost: cost.ilog2() as i32,
+                    cost: Self::ilog2(cost),
                     alpha,
                     beta,
                     score: node.best_score(),
@@ -1428,7 +1427,7 @@ impl Search {
                     position: self.state.position(),
                     depth,
                     selectivity: self.config.selectivity,
-                    cost: cost.ilog2() as i32,
+                    cost: Self::ilog2(cost),
                     alpha,
                     beta,
                     score: node.best_score(),
@@ -1522,7 +1521,6 @@ impl Search {
             alpha,
             beta,
             depth,
-            move_list.len() as i32,
             parent,
             self.state.height(),
         );
@@ -1603,7 +1601,7 @@ impl Search {
                 position: self.state.position(),
                 depth,
                 selectivity: hash_selectivity,
-                cost: cost.ilog2() as i32,
+                cost: Self::ilog2(cost),
                 alpha,
                 beta,
                 score: node.best_score(),
@@ -1678,7 +1676,6 @@ impl Search {
                 alpha,
                 beta,
                 depth,
-                0,
                 parent,
                 self.state.height(),
             );
@@ -1719,10 +1716,11 @@ impl Search {
                 alpha,
                 beta,
                 depth,
-                move_list.len() as i32,
                 parent,
                 self.state.height(),
             );
+
+            node.set_move_list(move_list);
 
             while let Some((index, move_)) = node.next_move() {
                 if !node.split(&move_) {
@@ -1753,7 +1751,7 @@ impl Search {
                 position: self.state.position(),
                 depth,
                 selectivity: hash_selectivity,
-                cost: cost.ilog2() as i32,
+                cost: Self::ilog2(cost),
                 alpha,
                 beta,
                 score: node.best_score(),
@@ -1910,9 +1908,18 @@ impl Search {
     }
 
     /// Null Window Search at endgame depth.
+    /// This is a null window search that returns a score from the player's perspective.
+    ///
+    /// The function handles positions with at most DEPTH_MIDGAME_TO_ENDGAME (15) empty squares.
     ///
     /// Like NWS_endgame() in Edax
     fn nws_endgame(&mut self, alpha: i32) -> i32 {
+        #[cfg(debug_assertions)]
+        {
+            let empty_count = self.state.position().empties().count_ones();
+            debug_assert!(empty_count <= DEPTH_MIDGAME_TO_ENDGAME as u32);
+        }
+
         let beta = alpha + 1;
 
         if !self.is_running() {
@@ -1950,9 +1957,9 @@ impl Search {
 
         let best_move = if move_list.is_empty() {
             if self.state.position().opponent_has_moves() {
-                self.state.update_pass_midgame(); // TODO should pass endgame here?
+                self.state.pass_endgame();
                 let score = -self.nws_endgame(-beta);
-                self.state.restore_pass_midgame();
+                self.state.pass_endgame();
 
                 Move::new_pass_with_score(score)
             } else {
@@ -1966,10 +1973,10 @@ impl Search {
 
             for move_ in move_list.iter() {
                 self.state.update_endgame(move_);
-                let score = -self.nws_endgame(-beta);
+                move_.score.set(-self.nws_endgame(-beta));
                 self.state.restore_endgame(move_);
 
-                if score > best_move.score.get() {
+                if move_.score.get() > best_move.score.get() {
                     best_move = move_.clone();
                     if best_move.score.get() >= beta {
                         break;
@@ -1980,14 +1987,14 @@ impl Search {
             best_move
         };
 
-        if !self.is_running() {
+        if self.is_running() {
             cost += self.shared.n_nodes.load(Ordering::Relaxed) as i64;
 
             self.hash_table.store(&StoreArgs {
                 position: self.state.position(),
                 depth: self.state.n_empties(),
                 selectivity: NO_SELECTIVITY,
-                cost: cost.ilog2() as i32,
+                cost: Self::ilog2(cost),
                 alpha,
                 beta,
                 score: best_move.score.get(),
@@ -2000,10 +2007,34 @@ impl Search {
         alpha
     }
 
-    /// Null Window Search to find exact score.
+    /// Compute the integer logarithm base 2 of a number.
+    /// Returns 0 if the number is 0.
+    ///
+    /// This is a helper function for computing the cost of a move.
+    fn ilog2(n: i64) -> i32 {
+        if n == 0 {
+            return 0;
+        }
+
+        n.ilog2() as i32
+    }
+
+    /// Null Window Search at shallow endgame depth (when empty squares <= DEPTH_TO_SHALLOW_SEARCH).
+    /// This is a null window search that returns a score from the player's perspective.
+    ///
+    /// The function is used for positions with up to DEPTH_TO_SHALLOW_SEARCH (7) empty squares.
+    /// It uses parity-based move ordering to optimize the search:
+    /// - Moves are sorted so quadrants with odd parity are searched first
+    /// - This improves alpha-beta pruning since quadrants with odd parity tend to be more constrained
     ///
     /// Like search_shallow() in Edax
     fn endgame_shallow(&mut self, alpha: i32) -> i32 {
+        #[cfg(debug_assertions)]
+        {
+            let empty_count = self.state.position().empties().count_ones();
+            debug_assert!(empty_count <= DEPTH_TO_SHALLOW_SEARCH as u32);
+        }
+
         let beta = alpha + 1;
         let mut best_score = -SCORE_INF;
 
@@ -2074,9 +2105,21 @@ impl Search {
     }
 
     /// Compute score for a position with 4 empty squares.
+    /// This is a null window search that returns a score from the player's perspective.
+    ///
+    /// The function uses parity-based move ordering to optimize the search:
+    /// - Moves are sorted so quadrants with odd parity are searched first
+    /// - This improves alpha-beta pruning since quadrants with odd parity tend to be more constrained
     ///
     /// Like search_solve_4() in Edax
     fn solve_4(&mut self, alpha: i32) -> i32 {
+        #[cfg(debug_assertions)]
+        {
+            let empties = self.state.position().empties();
+            debug_assert_eq!(empties.count_ones(), 4);
+            debug_assert_eq!(self.state.empties().len(), 4);
+        }
+
         let beta = alpha + 1;
 
         // TODO #15 further optimization: add dedicated function for taking 4 empties using unwrap_unchecked()
@@ -2090,6 +2133,22 @@ impl Search {
                 iter.next().unwrap().x as usize,
             )
         };
+
+        #[cfg(debug_assertions)]
+        {
+            let empties = self.state.position().empties();
+            debug_assert_eq!(empties.count_ones(), 4);
+            debug_assert_ne!(empties & (1 << x1), 0);
+            debug_assert_ne!(empties & (1 << x2), 0);
+            debug_assert_ne!(empties & (1 << x3), 0);
+            debug_assert_ne!(empties & (1 << x4), 0);
+            debug_assert_ne!(x1, x2);
+            debug_assert_ne!(x1, x3);
+            debug_assert_ne!(x1, x4);
+            debug_assert_ne!(x2, x3);
+            debug_assert_ne!(x2, x4);
+            debug_assert_ne!(x3, x4);
+        }
 
         // TODO #15: Move this to top of function, since it doesn't depend on the empties.
         if let Some(score) = self.state.stability_cutoff_nws(alpha) {
@@ -2118,6 +2177,17 @@ impl Search {
             } else {
                 (x2, x3, x4) = (x4, x2, x3); // case 1(x1) 1(x4) 2(x2 x3)
             }
+        }
+
+        // After sorting either of these is true:
+        // - x1 is in a quadrant with odd parity
+        // - all quadrants have even parity
+        #[cfg(debug_assertions)]
+        {
+            let x1_odd_parity = self.state.parity() & QUADRANT_ID[x1] != 0;
+            let all_even_parity = self.state.parity() == 0;
+
+            debug_assert!(x1_odd_parity || all_even_parity);
         }
 
         let mut best_score = -SCORE_INF;
@@ -2192,9 +2262,21 @@ impl Search {
     }
 
     /// Compute score for a position with 3 empty squares.
+    /// This is a null window search that returns a score from the player's perspective.
+    ///
+    /// The function uses parity-based move ordering to optimize the search:
+    /// - Moves are sorted so single-square quadrants are searched first
+    /// - This improves alpha-beta pruning since single squares tend to be more constrained
     ///
     /// Like search_solve_3() in Edax
-    fn solve_3(&mut self, alpha: i32) -> i32 {
+    fn solve_3(&self, alpha: i32) -> i32 {
+        #[cfg(debug_assertions)]
+        {
+            let empties = self.state.position().empties();
+            debug_assert_eq!(empties.count_ones(), 3);
+            debug_assert_eq!(self.state.empties().len(), 3);
+        }
+
         let beta = alpha + 1;
 
         // TODO #15 further optimization: add dedicated function for taking 3 empties using unwrap_unchecked()
@@ -2208,6 +2290,18 @@ impl Search {
             )
         };
 
+        #[cfg(debug_assertions)]
+        {
+            let empties = self.state.position().empties();
+            debug_assert_eq!(empties.count_ones(), 3);
+            debug_assert_ne!(empties & (1 << x1), 0);
+            debug_assert_ne!(empties & (1 << x2), 0);
+            debug_assert_ne!(empties & (1 << x3), 0);
+            debug_assert_ne!(x1, x2);
+            debug_assert_ne!(x1, x3);
+            debug_assert_ne!(x2, x3);
+        }
+
         let parity = self.state.parity();
 
         // parity based move sorting
@@ -2216,6 +2310,21 @@ impl Search {
                 (x1, x2) = (x2, x1); // case 1(x2) 2(x1 x3)
             } else {
                 (x1, x2, x3) = (x3, x1, x2); // case 1(x3) 2(x1 x2)
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            let q1 = QUADRANT_ID[x1];
+            let q2 = QUADRANT_ID[x2];
+            let q3 = QUADRANT_ID[x3];
+
+            // If empties are within 2 quadrants:
+            // x1 must be alone in a quadrant.
+            // x2 and x3 must be in the other quadrant.
+            if (q1 | q2 | q3).count_ones() == 2 {
+                debug_assert_ne!(q1, q2);
+                debug_assert_eq!(q2, q3);
             }
         }
 
@@ -2256,36 +2365,44 @@ impl Search {
         }
 
         if best_score == -SCORE_INF {
+            best_score = SCORE_INF;
+
             if NEIGHBOUR[x1] & self.state.position().player() != 0 {
-                let mut next = *self.state.position();
-                next.pass();
-                best_score = -Self::solve_2(&next, alpha, x2, x3);
-                if best_score <= alpha {
-                    return best_score;
+                let (next, flipped) =
+                    Position::new_from_parent_and_pass_and_move(self.state.position(), x1);
+                if flipped != 0 {
+                    best_score = Self::solve_2(&next, alpha, x2, x3);
+                    if best_score <= alpha {
+                        return best_score;
+                    }
                 }
             }
 
             if NEIGHBOUR[x2] & self.state.position().player() != 0 {
-                let mut next = *self.state.position();
-                next.pass();
-                let score = -Self::solve_2(&next, alpha, x1, x3);
-                if score <= alpha {
-                    return score;
-                } else if score < best_score {
-                    best_score = score;
+                let (next, flipped) =
+                    Position::new_from_parent_and_pass_and_move(self.state.position(), x2);
+                if flipped != 0 {
+                    let score = Self::solve_2(&next, alpha, x1, x3);
+                    if score <= alpha {
+                        return score;
+                    } else if score < best_score {
+                        best_score = score;
+                    }
                 }
             }
 
             if NEIGHBOUR[x3] & self.state.position().player() != 0 {
-                let mut next = *self.state.position();
-                next.pass();
-                let score = -Self::solve_2(&next, alpha, x1, x2);
-                if score < best_score {
-                    best_score = score;
+                let (next, flipped) =
+                    Position::new_from_parent_and_pass_and_move(self.state.position(), x3);
+                if flipped != 0 {
+                    let score = Self::solve_2(&next, alpha, x1, x2);
+                    if score < best_score {
+                        best_score = score;
+                    }
                 }
             }
 
-            if best_score == -SCORE_INF {
+            if best_score == SCORE_INF {
                 best_score = self.state.position().final_score_with_empty(3);
             }
         }
@@ -2294,9 +2411,24 @@ impl Search {
     }
 
     /// Compute score for a position with 2 empty squares.
+    /// This is a null window search that returns a score from the player's perspective.
     ///
-    /// Like search_solve_2() in Edax
+    /// The returned value may be inaccurate if it's > alpha, but this is fine since we only
+    /// care whether the score exceeds alpha for pruning purposes. We don't use beta because
+    /// we're only interested in alpha cutoffs - the exact score doesn't matter once we know
+    /// it's high enough to cause a cutoff.
+    ///
+    /// Like board_solve_2() in Edax
     fn solve_2(position: &Position, alpha: i32, x1: usize, x2: usize) -> i32 {
+        #[cfg(debug_assertions)]
+        {
+            let empties = position.empties();
+            debug_assert_eq!(empties.count_ones(), 2);
+            debug_assert_ne!(empties & (1 << x1), 0);
+            debug_assert_ne!(empties & (1 << x2), 0);
+            debug_assert_ne!(x1, x2);
+        }
+
         let beta = alpha + 1;
 
         let mut best_score = -SCORE_INF;
@@ -2304,7 +2436,7 @@ impl Search {
         if NEIGHBOUR[x1] & position.opponent() != 0 {
             let (next, flipped) = Position::new_from_parent_and_move(position, x1);
             if flipped != 0 {
-                best_score = -Self::solve_1(&next, beta, x2);
+                best_score = Self::solve_1(&next, beta, x2);
             }
         }
 
@@ -2312,7 +2444,7 @@ impl Search {
             if NEIGHBOUR[x2] & position.opponent() != 0 {
                 let (next, flipped) = Position::new_from_parent_and_move(position, x2);
                 if flipped != 0 {
-                    let score = -Self::solve_1(&next, alpha, x1);
+                    let score = Self::solve_1(&next, beta, x1);
                     if score > best_score {
                         best_score = score;
                     }
@@ -2320,24 +2452,28 @@ impl Search {
             }
 
             if best_score == -SCORE_INF {
+                // player has no moves
+                debug_assert_eq!(position.get_moves(), 0);
                 best_score = SCORE_INF;
 
                 if NEIGHBOUR[x1] & position.player() != 0 {
-                    let mut next = *position;
-                    next.pass();
-                    best_score = -Self::solve_1(&next, alpha, x2);
+                    let (next, flipped) = Position::new_from_parent_and_pass_and_move(position, x1);
+                    if flipped != 0 {
+                        best_score = -Self::solve_1(&next, -alpha, x2);
+                    }
                 }
 
                 if best_score > alpha {
                     if NEIGHBOUR[x2] & position.player() != 0 {
-                        let mut next = *position;
-                        next.pass();
-                        let score = -Self::solve_1(&next, alpha, x1);
-                        if score < best_score {
-                            best_score = score;
+                        let (next, flipped) =
+                            Position::new_from_parent_and_pass_and_move(position, x2);
+                        if flipped != 0 {
+                            let score = -Self::solve_1(&next, -alpha, x1);
+                            if score < best_score {
+                                best_score = score;
+                            }
                         }
                     }
-
                     if best_score == SCORE_INF {
                         best_score = position.final_score_with_empty(2);
                     }
@@ -2349,28 +2485,1094 @@ impl Search {
     }
 
     /// Compute score for a position with 1 empty square.
+    /// This is a null window search that returns a score from the opponent's perspective.
     ///
-    /// Like search_solve_1() in Edax
+    /// The returned value may be inaccurate if it's >= beta, but this is fine since we only
+    /// care whether the score exceeds beta for pruning purposes. We don't use alpha because
+    /// we're only interested in beta cutoffs - the exact score doesn't matter once we know
+    /// it's high enough to cause a cutoff.
+    ///
+    /// Like board_solve_1() in Edax
     fn solve_1(position: &Position, beta: i32, x: usize) -> i32 {
+        #[cfg(debug_assertions)]
+        {
+            let empties = position.empties();
+            debug_assert_eq!(empties.count_ones(), 1);
+            debug_assert_ne!(empties & (1 << x), 0);
+        }
+
+        // Compute score from the opponent's perspective.
         let mut score = 2 * position.opponent().count_ones() as i32 - SCORE_MAX;
 
-        let mut n_flips = count_last_flip(x, position.player()) as i32;
+        // How many discs are flipped if player makes move `x`.
+        let n_flips = count_last_flip(x, position.player()) as i32;
 
+        // If discs are flipped, the move `x` is legal for player.
         if n_flips != 0 {
-            score -= n_flips;
-        } else if score >= 0 {
+            // Subtract number of opponent's discs flipped.
+            return score - n_flips;
+        }
+
+        // Check if opponent has a guaranteed draw or win, even if `x` is not a valid move for them.
+        if score >= 0 {
+            // Opponent has guaranteed draw or win, so:
+            // - if `x` is a valid move, we will play it.
+            // - if `x` is not a valid move, it will be counted to our final score anyway.
+            //
+            // In both cases we can add 2 to our score.
             score += 2;
+
+            // Check for cut-off since computing flipped discs is expensive.
+            // Score can only grow from here on. Returning an inaccurate value on beta cut-off is fine.
             if score < beta {
-                n_flips = count_last_flip(x, position.opponent()) as i32;
+                // Compute the number of discs flipped for opponent if they make move `x`.
+                let n_flips = count_last_flip(x, position.opponent()) as i32;
+
+                // Add number of opponent's discs flipped.
+                // Note that if n_flips is 0, this is still correct.
                 score += n_flips;
             }
-        } else if score < beta {
-            let n_flips = count_last_flip(x, position.opponent()) as i32;
-            if n_flips != 0 {
-                score += n_flips + 2;
+        } else {
+            // Opponent has fewer discs than player, so they may lose.
+
+            // Check for cut-off since computing flipped discs is expensive.
+            // Score can only grow from here on. Returning an inaccurate value on beta cut-off is fine.
+            if score < beta {
+                // Compute the number of discs flipped for opponent if they make move `x`.
+                let n_flips = count_last_flip(x, position.opponent()) as i32;
+
+                // If discs are flipped, the move `x` is legal for opponent.
+                if n_flips != 0 {
+                    // Add number of opponent's discs flipped.
+                    score += n_flips + 2;
+                }
+
+                // If no discs are flipped, nobody can move.
+                // This means that opponent loses.
+                // Note that score is already the correct value.
             }
         }
 
         score
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl Search {
+        /// Change position, since creating a Search is slow.
+        /// Requires a `level` argument, since SearchConfig does not save it.
+        fn set_position(&mut self, position: &Position, level: i32) {
+            self.state = SearchState::new(position);
+            self.config = SearchConfig::new(level, position.count_empty() as i32);
+        }
+    }
+
+    /// Solves a position using a naive alpha-beta search.
+    fn solve_naive_internal(position: &mut Position, mut alpha: i32, beta: i32) -> i32 {
+        let moves = position.iter_move_indices();
+
+        // If no moves available
+        if moves.is_empty() {
+            // Check if the game is finished
+            if position.get_opponent_moves() == 0 {
+                // Game is over, return final evaluation
+                return position.final_score() as i32;
+            }
+
+            // Recursively evaluate after passing
+            position.pass();
+            let score = -solve_naive_internal(position, -beta, -alpha);
+            position.pass();
+            return score;
+        }
+
+        for move_ in moves {
+            let flipped = position.do_move(move_);
+            let score = -solve_naive_internal(position, -beta, -alpha);
+            position.undo_move(move_, flipped);
+
+            if alpha >= beta {
+                break; // Beta cutoff
+            }
+
+            alpha = alpha.max(score);
+        }
+
+        alpha
+    }
+
+    fn solve_naive(position: &Position) -> i32 {
+        let mut position = *position;
+        solve_naive_internal(&mut position, SCORE_MIN, SCORE_MAX)
+    }
+
+    #[test]
+    fn test_solve_1() {
+        struct Case {
+            description: &'static str,
+            player: u64,
+            opponent: u64,
+
+            // Index of only empty square
+            x: usize,
+
+            // Score from opponent's perspective
+            // Some for known solutions, None for random positions
+            score: Option<i32>,
+        }
+
+        let mut cases = vec![
+            Case {
+                player: 0xFFFFFFFFFFFFFFFE,
+                opponent: 0x0000000000000000,
+                x: 0,
+                score: Some(-64),
+                description: "nobody has moves, player wins",
+            },
+            Case {
+                player: 0x0000000000000000,
+                opponent: 0xFFFFFFFFFFFFFFFE,
+                x: 0,
+                score: Some(64),
+                description: "nobody has moves, opponent wins",
+            },
+            // No moves and draw is impossible with 63 discs on the board.
+            Case {
+                player: 0xFFFFFFFFFFFFFFFC,
+                opponent: 0x0000000000000002,
+                x: 0,
+                score: Some(-64),
+                description: "player has move and wins",
+            },
+            Case {
+                player: 0x00000000FFFFFCFC,
+                opponent: 0xFFFFFFFF00000302,
+                x: 0,
+                score: Some(0),
+                description: "player has move and draws",
+            },
+            Case {
+                player: 0x0000000000000004,
+                opponent: 0xFFFFFFFFFFFFFFFA,
+                x: 0,
+                score: Some(58),
+                description: "player has move and loses",
+            },
+            Case {
+                player: 0x0000000000000002,
+                opponent: 0xFFFFFFFFFFFFFFFC,
+                x: 0,
+                score: Some(64),
+                description: "opponent has move and wins",
+            },
+            Case {
+                player: 0xFFFFFFFF00000302,
+                opponent: 0x00000000FFFFFCFC,
+                x: 0,
+                score: Some(0),
+                description: "opponent has move and draws",
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFFFA,
+                opponent: 0x0000000000000004,
+                x: 0,
+                score: Some(-58),
+                description: "opponent has move and loses",
+            },
+        ];
+
+        for _ in 0..1000 {
+            let position = Position::new_random_with_empties(1);
+            cases.push(Case {
+                player: position.player(),
+                opponent: position.opponent(),
+                x: position.empties().trailing_zeros() as usize,
+                score: None,
+                description: "random position",
+            });
+        }
+
+        for case in cases.iter() {
+            let position = Position::new_from_bitboards(case.player, case.opponent);
+
+            println!();
+            println!("--- {} ---", case.description);
+            println!();
+            println!("{}", position);
+
+            let empties = position.empties();
+            assert_eq!(empties.count_ones(), 1);
+            assert_eq!(empties, 1 << case.x);
+
+            // Invert naive score, so we match the opponent's perspective of solve_1().
+            let score = -solve_naive(&position);
+
+            if let Some(expected) = case.score {
+                assert_eq!(score, expected);
+            }
+
+            for beta in [
+                SCORE_MIN,
+                score - 4,
+                score - 2,
+                score,
+                score + 2,
+                score + 4,
+                SCORE_MAX,
+            ] {
+                let beta = beta.clamp(SCORE_MIN, SCORE_MAX);
+
+                let solved = Search::solve_1(&position, beta, case.x);
+
+                // solve_1() may return inaccurate value on beta cut-off.
+                let is_cutoff = solved >= beta;
+
+                let ok = if is_cutoff {
+                    // Cut-off found, check if score justifies it.
+                    score >= beta
+                } else {
+                    // No cut-off, score should be accurate.
+                    solved == score
+                };
+
+                if !ok {
+                    println!("beta: {}", beta);
+                    println!("expected: {}", score);
+                    println!("found: {}", solved);
+                    panic!("solve_1 returned incorrect result");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_solve_2() {
+        struct Case {
+            description: &'static str,
+            player: u64,
+            opponent: u64,
+
+            // Indices of empty squares
+            x1: usize,
+            x2: usize,
+
+            // Score from player's perspective
+            // Some for known solutions, None for random positions
+            score: Option<i32>,
+        }
+
+        let mut cases = vec![
+            Case {
+                player: 0xFFFFFFFFFFFFFFFC,
+                opponent: 0x0000000000000000,
+                x1: 0,
+                x2: 1,
+                score: Some(64),
+                description: "nobody has moves, player wins",
+            },
+            Case {
+                player: 0xFFFFFFFE00000000,
+                opponent: 0x00000000FEFFFFFF,
+                x1: 24,
+                x2: 32,
+                score: Some(0),
+                description: "nobody has moves, draw",
+            },
+            Case {
+                player: 0x0000000000000000,
+                opponent: 0xFFFFFFFFFFFFFFFC,
+                x1: 0,
+                x2: 1,
+                score: Some(-64),
+                description: "nobody has moves, opponent wins",
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFFF8,
+                opponent: 0x0000000000000004,
+                x1: 0,
+                x2: 1,
+                score: Some(64),
+                description: "player has moves, player wins",
+            },
+            Case {
+                player: 0xF8000000FFFFF8F8,
+                opponent: 0x07FFFFFF00000704,
+                x1: 0,
+                x2: 1,
+                score: Some(0),
+                description: "player has moves, draw",
+            },
+            Case {
+                player: 0x0000000000000005,
+                opponent: 0xFFFFFFFFFFFFFFE8,
+                x1: 1,
+                x2: 4,
+                score: Some(-62),
+                description: "player has moves, opponent wins",
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFFCE,
+                opponent: 0x0000000000000001,
+                x1: 4,
+                x2: 5,
+                score: Some(54),
+                description: "opponent has moves, player wins",
+            },
+            Case {
+                player: 0x07FFFFFF00000704,
+                opponent: 0xF8000000FFFFF8F8,
+                x1: 0,
+                x2: 1,
+                score: Some(0),
+                description: "opponent has moves, draw",
+            },
+            Case {
+                player: 0x0000000000000004,
+                opponent: 0xFFFFFFFFFFFFFFF8,
+                x1: 0,
+                x2: 1,
+                score: Some(-64),
+                description: "opponent has moves, opponent wins",
+            },
+        ];
+
+        for _ in 0..1000 {
+            let position = Position::new_random_with_empties(2);
+
+            let mut empties = position.empties();
+            let x1 = empties.trailing_zeros() as usize;
+            empties &= !(1 << x1);
+            let x2 = empties.trailing_zeros() as usize;
+
+            cases.push(Case {
+                player: position.player(),
+                opponent: position.opponent(),
+                x1,
+                x2,
+                score: None,
+                description: "random position",
+            });
+        }
+
+        for case in cases.iter() {
+            let position = Position::new_from_bitboards(case.player, case.opponent);
+
+            println!();
+            println!("--- {} ---", case.description);
+            println!();
+            println!("{}", position);
+
+            let score = solve_naive(&position);
+
+            if let Some(expected) = case.score {
+                assert_eq!(score, expected);
+            }
+
+            for alpha in [
+                SCORE_MIN,
+                score - 4,
+                score - 2,
+                score,
+                score + 2,
+                score + 4,
+                SCORE_MAX,
+            ] {
+                let alpha = alpha.clamp(SCORE_MIN, SCORE_MAX);
+
+                let solved = Search::solve_2(&position, alpha, case.x1, case.x2);
+
+                let ok = (solved > alpha) == (score > alpha);
+
+                if !ok {
+                    println!("alpha: {}", alpha);
+                    println!("expected: {}", score);
+                    println!("found: {}", solved);
+                    panic!("solve_2 returned incorrect result");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_solve_3() {
+        struct Case {
+            description: &'static str,
+            player: u64,
+            opponent: u64,
+
+            // Score from player's perspective
+            // Some for known solutions, None for random positions
+            score: Option<i32>,
+        }
+
+        let mut cases = vec![
+            Case {
+                player: 0xFFFFFFFFFFFFFFF8,
+                opponent: 0x0000000000000000,
+                score: Some(64),
+                description: "nobody has moves, player wins",
+            },
+            // When there are no moves, it's impossible to draw with 61 discs on the board.
+            Case {
+                player: 0x0000000000000000,
+                opponent: 0xFFFFFFFFFFFFFFF8,
+                score: Some(-64),
+                description: "nobody has moves, opponent wins",
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFFF0,
+                opponent: 0x0000000000000008,
+                score: Some(64),
+                description: "player has moves, player wins",
+            },
+            Case {
+                player: 0xF3000000FFFFFFF0,
+                opponent: 0x0CFFFFFF00000008,
+                score: Some(0),
+                description: "player has moves, draw",
+            },
+            Case {
+                player: 0x7000000000000005,
+                opponent: 0x8FFFFFFFFFFFFFC8,
+                score: Some(-34),
+                description: "player has moves, opponent wins",
+            },
+            Case {
+                player: 0x8FFFFFFFFFFFFF88,
+                opponent: 0x7000000000000007,
+                score: Some(20),
+                description: "opponent has moves, player wins",
+            },
+            Case {
+                player: 0x8F0F0F0F0F0FFF88,
+                opponent: 0x70F0F0F0F0F00007,
+                score: Some(0),
+                description: "opponent has moves, draw",
+            },
+            Case {
+                player: 0x0000000000000008,
+                opponent: 0xFFFFFFFFFFFFFFF0,
+                score: Some(-64),
+                description: "opponent has moves, opponent wins",
+            },
+            Case {
+                player: 0x805AACF2FAFEFEFE,
+                opponent: 0x7F25130D05010100,
+                score: Some(6),
+                description: "previously failing random position - player has no moves",
+            },
+        ];
+
+        for _ in 0..1000 {
+            let position = Position::new_random_with_empties(3);
+
+            cases.push(Case {
+                player: position.player(),
+                opponent: position.opponent(),
+                score: None,
+                description: "random position",
+            });
+        }
+
+        let mut search = Search::new(&Position::new(), 0, 0);
+
+        for case in cases.iter() {
+            let position = Position::new_from_bitboards(case.player, case.opponent);
+
+            search.set_position(&position, 0);
+
+            println!();
+            println!("--- {} ---", case.description);
+            println!();
+            println!("{}", position);
+
+            let score = solve_naive(&position);
+
+            if let Some(expected) = case.score {
+                assert_eq!(score, expected);
+            }
+
+            for alpha in [
+                SCORE_MIN,
+                score - 4,
+                score - 2,
+                score,
+                score + 2,
+                score + 4,
+                SCORE_MAX,
+            ] {
+                let alpha = alpha.clamp(SCORE_MIN, SCORE_MAX);
+
+                let solved = search.solve_3(alpha);
+
+                let ok = (solved > alpha) == (score > alpha);
+
+                if !ok {
+                    println!("alpha: {}", alpha);
+                    println!("expected: {}", score);
+                    println!("found: {}", solved);
+                    panic!("solve_3 returned incorrect result");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_solve_4() {
+        struct Case {
+            description: &'static str,
+            player: u64,
+            opponent: u64,
+
+            // Score from player's perspective
+            // Some for known solutions, None for random positions
+            score: Option<i32>,
+        }
+
+        let mut cases = vec![
+            Case {
+                player: 0xFFFFFFFFFFFFFFF0,
+                opponent: 0x0000000000000000,
+                score: Some(64),
+                description: "nobody has moves, player wins",
+            },
+            Case {
+                player: 0xFFFFFF7E00000000,
+                opponent: 0x000000007EFFFFFF,
+                score: Some(0),
+                description: "nobody has moves, draw",
+            },
+            Case {
+                player: 0x0000000000000000,
+                opponent: 0xFFFFFFFFFFFFFFF0,
+                score: Some(-64),
+                description: "nobody has moves, opponent wins",
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFFE0,
+                opponent: 0x0000000000000010,
+                score: Some(64),
+                description: "player has moves, player wins",
+            },
+            Case {
+                player: 0x220000FFFFFFE0E0,
+                opponent: 0xDDFFFF0000001F10,
+                score: Some(0),
+                description: "player has moves, draw",
+            },
+            Case {
+                player: 0x020000FFFFFFE0E0,
+                opponent: 0xFDFFFF0000001F10,
+                score: Some(-2),
+                description: "player has moves, opponent wins",
+            },
+            Case {
+                player: 0xFDFFFF0000001F10,
+                opponent: 0x020000FFFFFFE0E0,
+                score: Some(2),
+                description: "opponent has moves, player wins",
+            },
+            Case {
+                player: 0xDDFFFF0000001F10,
+                opponent: 0x220000FFFFFFE0E0,
+                score: Some(0),
+                description: "opponent has moves, draw",
+            },
+            Case {
+                player: 0x0000000000000010,
+                opponent: 0xFFFFFFFFFFFFFFE0,
+                score: Some(-64),
+                description: "opponent has moves, opponent wins",
+            },
+        ];
+
+        for _ in 0..1000 {
+            let position = Position::new_random_with_empties(4);
+
+            cases.push(Case {
+                player: position.player(),
+                opponent: position.opponent(),
+                score: None,
+                description: "random position",
+            });
+        }
+
+        let mut search = Search::new(&Position::new(), 0, 0);
+
+        for case in cases.iter() {
+            let position = Position::new_from_bitboards(case.player, case.opponent);
+
+            search.set_position(&position, 0);
+
+            println!();
+            println!("--- {} ---", case.description);
+            println!();
+            println!("{}", position);
+
+            let score = solve_naive(&position);
+
+            if let Some(expected) = case.score {
+                assert_eq!(score, expected);
+            }
+
+            for alpha in [
+                SCORE_MIN,
+                score - 4,
+                score - 2,
+                score,
+                score + 2,
+                score + 4,
+                SCORE_MAX,
+            ] {
+                let alpha = alpha.clamp(SCORE_MIN, SCORE_MAX);
+
+                let solved = search.solve_4(alpha);
+
+                let ok = (solved > alpha) == (score > alpha);
+
+                if !ok {
+                    println!("alpha: {}", alpha);
+                    println!("expected: {}", score);
+                    println!("found: {}", solved);
+                    panic!("solve_4 returned incorrect result");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_endgame_shallow() {
+        struct Case {
+            description: &'static str,
+            player: u64,
+            opponent: u64,
+            empties: usize,
+
+            // Score from player's perspective
+            // Some for known solutions, None for random positions
+            score: Option<i32>,
+        }
+
+        let mut cases = vec![
+            Case {
+                player: 0xFFFFFFFFFFFFFFE0,
+                opponent: 0x0000000000000000,
+                empties: 5,
+                description: "5 empties, nobody has moves, player wins",
+                score: Some(64),
+            },
+            // Nobody has moves, draw is not possible with 59 discs on the board
+            Case {
+                player: 0x0000000000000000,
+                opponent: 0xFFFFFFFFFFFFFFE0,
+                empties: 5,
+                description: "5 empties, nobody has moves, opponent wins",
+                score: Some(-64),
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFFC0,
+                opponent: 0x0000000000000020,
+                empties: 5,
+                description: "5 empties, player has moves, player wins",
+                score: Some(64),
+            },
+            Case {
+                player: 0xFFFC000000000000,
+                opponent: 0x0003FFFFFFFFFEF0,
+                empties: 5,
+                description: "5 empties, player has moves, draw",
+                score: Some(0),
+            },
+            Case {
+                player: 0x0000000000000080,
+                opponent: 0xFFFFFFFFFFFFFF41,
+                empties: 5,
+                description: "5 empties, player has moves, opponent wins",
+                score: Some(-58),
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFF41,
+                opponent: 0x0000000000000080,
+                empties: 5,
+                description: "5 empties, opponent has moves, player wins",
+                score: Some(58),
+            },
+            Case {
+                player: 0xFFFFFF8000003F20,
+                opponent: 0x0000007FFFFFC0C0,
+                empties: 5,
+                description: "5 empties, opponent has moves, draw",
+                score: Some(0),
+            },
+            Case {
+                player: 0x0000000000000020,
+                opponent: 0xFFFFFFFFFFFFFFC0,
+                empties: 5,
+                description: "5 empties, opponent has moves, opponent wins",
+                score: Some(-64),
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFFC0,
+                opponent: 0x0000000000000000,
+                empties: 6,
+                description: "6 empties, nobody has moves, player wins",
+                score: Some(64),
+            },
+            Case {
+                player: 0xFFFFFFF800000000,
+                opponent: 0x00000000F8FFFFFF,
+                empties: 6,
+                description: "6 empties, nobody has moves, draw",
+                score: Some(0),
+            },
+            Case {
+                player: 0x0000000000000000,
+                opponent: 0xFFFFFFFFFFFFFFC0,
+                empties: 6,
+                description: "6 empties, nobody has moves, opponent wins",
+                score: Some(-64),
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFF80,
+                opponent: 0x0000000000000040,
+                empties: 6,
+                description: "6 empties, player has moves, player wins",
+                score: Some(64),
+            },
+            Case {
+                player: 0x7FE0000000000000,
+                opponent: 0x801FFFFFFFFFFFC0,
+                empties: 6,
+                description: "6 empties, player has moves, draw",
+                score: Some(0),
+            },
+            Case {
+                player: 0x0000000000000080,
+                opponent: 0xFFFFFFFFFFFFFF40,
+                empties: 6,
+                description: "6 empties, player has moves, opponent wins",
+                score: Some(-58),
+            },
+            Case {
+                player: 0xFFFFFFFFFFFFFF40,
+                opponent: 0x0000000000000080,
+                empties: 6,
+                description: "6 empties, opponent has moves, player wins",
+                score: Some(58),
+            },
+            Case {
+                player: 0x801FFFFFFFFFFFC0,
+                opponent: 0x7FE0000000000000,
+                empties: 6,
+                description: "6 empties, opponent has moves, draw",
+                score: Some(0),
+            },
+            Case {
+                player: 0x0000000000000040,
+                opponent: 0xFFFFFFFFFFFFFF80,
+                empties: 6,
+                description: "6 empties, opponent has moves, opponent wins",
+                score: Some(-64),
+            },
+        ];
+
+        // Generate random positions with different numbers of empty squares
+        {
+            let min_empties = 0;
+            let max_empties = DEPTH_TO_SHALLOW_SEARCH as usize;
+
+            for i in 0..1000 {
+                let empties = min_empties + (i % (max_empties - min_empties + 1));
+                let position = Position::new_random_with_empties(empties);
+
+                cases.push(Case {
+                    player: position.player(),
+                    opponent: position.opponent(),
+                    empties,
+                    score: None,
+                    description: "random position",
+                });
+            }
+        }
+
+        let mut search = Search::new(&Position::new(), 0, 0);
+
+        for case in cases.iter() {
+            let position = Position::new_from_bitboards(case.player, case.opponent);
+
+            search.set_position(&position, 0);
+
+            println!();
+            println!("--- {} ---", case.description);
+            println!();
+            println!("{}", position);
+
+            let score = solve_naive(&position);
+
+            if let Some(expected) = case.score {
+                assert_eq!(score, expected);
+            }
+
+            assert_eq!(position.count_empty() as usize, case.empties);
+
+            for alpha in [
+                SCORE_MIN,
+                score - 4,
+                score - 2,
+                score,
+                score + 2,
+                score + 4,
+                SCORE_MAX,
+            ] {
+                let alpha = alpha.clamp(SCORE_MIN, SCORE_MAX);
+
+                let solved = search.endgame_shallow(alpha);
+
+                let ok = (solved > alpha) == (score > alpha);
+
+                if !ok {
+                    println!("alpha: {}", alpha);
+                    println!("expected: {}", score);
+                    println!("found: {}", solved);
+                    panic!("endgame_shallow returned incorrect result");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_nws_endgame_fast() {
+        struct Case {
+            description: &'static str,
+            player: u64,
+            opponent: u64,
+            empties: usize,
+
+            // Score from player's perspective
+            // Some for known solutions, None for random positions
+            score: Option<i32>,
+        }
+
+        let mut cases = vec![Case {
+            player: 0x0181B9A5B5A905A1,
+            opponent: 0xFC7E465A4A566240,
+            empties: 8,
+            description: "8 empties, failing random position",
+            score: Some(18),
+        }];
+
+        // Generate random positions with different numbers of empty squares
+        {
+            // nws_empties() handles up to 15 empties, but we only test up to 10 empties
+            // because it takes too long to compute with the naive solver.
+
+            // We have a separate test for up to 15 empties, which doesn't run by default.
+
+            for empties in 7..=10 {
+                for _ in 0..100 {
+                    let position = Position::new_random_with_empties(empties);
+
+                    cases.push(Case {
+                        player: position.player(),
+                        opponent: position.opponent(),
+                        empties,
+                        score: None,
+                        description: "random position",
+                    });
+                }
+            }
+        }
+
+        let mut search = Search::new(&Position::new(), 0, 0);
+
+        // Pretend we've called Search::run(), otherwise nws_endgame() will return immediately
+        search
+            .shared
+            .stop
+            .store(Stop::Running as u8, Ordering::Release);
+
+        for case in cases.iter() {
+            let position = Position::new_from_bitboards(case.player, case.opponent);
+
+            search.set_position(&position, 0);
+
+            println!();
+            println!("--- {} ---", case.description);
+            println!();
+            println!("{}", position);
+
+            let score = solve_naive(&position);
+
+            if let Some(expected) = case.score {
+                assert_eq!(score, expected);
+            }
+
+            assert_eq!(position.count_empty() as usize, case.empties);
+
+            for alpha in [
+                SCORE_MIN,
+                score - 4,
+                score - 2,
+                score,
+                score + 2,
+                score + 4,
+                SCORE_MAX,
+            ] {
+                let alpha = alpha.clamp(SCORE_MIN, SCORE_MAX);
+
+                let solved = search.nws_endgame(alpha);
+
+                let ok = (solved > alpha) == (score > alpha);
+
+                if !ok {
+                    println!("alpha: {}", alpha);
+                    println!("expected: {}", score);
+                    println!("found: {}", solved);
+                    panic!("nws_endgame returned incorrect result");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_nws_endgame_slow() {
+        if std::env::var("RUN_NWS_ENDGAME_SLOW").is_err() {
+            println!("Skipping slow nws_endgame tests. Set RUN_NWS_ENDGAME_SLOW environment variable to run them.");
+            return;
+        }
+
+        struct Case {
+            description: &'static str,
+            player: u64,
+            opponent: u64,
+            empties: usize,
+
+            // Score from player's perspective
+            // Some for known solutions, None for random positions
+            score: Option<i32>,
+        }
+
+        let mut cases = vec![];
+
+        // Generate random positions with different numbers of empty squares
+        {
+            for empties in 11..=15 {
+                for _ in 0..10 {
+                    let position = Position::new_random_with_empties(empties);
+
+                    cases.push(Case {
+                        player: position.player(),
+                        opponent: position.opponent(),
+                        empties,
+                        score: None,
+                        description: "random position",
+                    });
+                }
+            }
+        }
+
+        let mut search = Search::new(&Position::new(), 0, 0);
+
+        // Pretend we've called Search::run(), otherwise nws_endgame() will return immediately
+        search
+            .shared
+            .stop
+            .store(Stop::Running as u8, Ordering::Release);
+
+        for case in cases.iter() {
+            let position = Position::new_from_bitboards(case.player, case.opponent);
+
+            search.set_position(&position, 0);
+
+            println!();
+            println!("--- {} ---", case.description);
+            println!();
+            println!("{}", position);
+
+            let score = solve_naive(&position);
+
+            if let Some(expected) = case.score {
+                assert_eq!(score, expected);
+            }
+
+            assert_eq!(position.count_empty() as usize, case.empties);
+
+            for alpha in [
+                SCORE_MIN,
+                score - 4,
+                score - 2,
+                score,
+                score + 2,
+                score + 4,
+                SCORE_MAX,
+            ] {
+                let alpha = alpha.clamp(SCORE_MIN, SCORE_MAX);
+
+                let solved = search.nws_endgame(alpha);
+
+                let ok = (solved > alpha) == (score > alpha);
+
+                if !ok {
+                    println!("alpha: {}", alpha);
+                    println!("expected: {}", score);
+                    println!("found: {}", solved);
+                    panic!("nws_endgame returned incorrect result");
+                }
+            }
+        }
+    }
+
+    // Testing of Search functions, in order of dependency
+    //
+    // Done:
+    // - Search::test_solve_1()
+    // - Search::test_solve_2()
+    // - Search::test_solve_3()
+    // - Search::test_solve_4()
+    // - Search::endgame_shallow()
+    // - Search::nws_endgame()
+
+    // TODO: move ordering and shallow search
+    // - Search::nws_shallow_with_shallow_table()
+    // - SearchState::stability_cutoff_pvs()
+    // - Search::pvs_shallow()
+    // - Search::evaluate_move()
+    // - Search::evaluate_movelist()
+
+    // TODO: regular search
+    // - SearchState::stability_cutoff_nws(), should go before nws_endgame()
+    // - Search::transposition_cutoff_nws()
+    // - Search::nws_shallow_with_hash_table()
+    // - Search::probcut()
+    // - Search::nws_midgame()
+    // - Search::pvs_midgame()
+    // - Search::route_pvs()
+    // - Search::pvs_root()
+    // - Search::aspiration_search()
+    // - Search::iterative_deepening()
+
+    // TODO: other functions
+    // - Search::new()
+    // - Search::is_running()
+    // - Search::clock()
+    // - Search::count_nodes()
+    // - Search::sum_nodes()
+    // - Search::run()
+    // - Search::get_last_level()
+    // - Search::adjust_time()
+    // - Search::guess_move()
+    // - Search::get_time_spent()
+    // - Search::record_best_move()
+    // - Search::continue_search()
+    // - Search::is_depth_solving()
+    // - Search::is_pv_ok()
+    // - Search::solve()
+    // - Search::get_pv_cost()
+    // - Search::update_probcut()
+    // - Search::restore_probcut()
+    // - Search::etc_nws()
+    // - Search::ilog2()
 }

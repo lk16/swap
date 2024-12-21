@@ -69,7 +69,6 @@ impl Node {
         alpha: i32,
         beta: i32,
         depth: i32,
-        n_moves: i32,
         parent: Option<Arc<Node>>,
         height: i32,
     ) -> Arc<Self> {
@@ -79,13 +78,13 @@ impl Node {
             depth,
             height,
             pv_node: false,
-            n_moves_todo: n_moves,
-            n_moves_done: 0,
             parent,
             search,
             best_move: NO_MOVE as i32,
             best_score: 0,
-            move_list: MoveList::new_empty(),
+            n_moves_todo: 0,                  // Set in set_move_list()
+            n_moves_done: 0,                  // Set in set_move_list()
+            move_list: MoveList::new_empty(), // Set in set_move_list()
         };
 
         Arc::new(Self {
@@ -139,7 +138,7 @@ impl Node {
     ///
     /// Like node_wait_slaves() in Edax
     pub fn wait_slaves(&self) {
-        todo!() // TODO #8 Concurrent search: wait for slaves to finish
+        // TODO #8 Concurrent search: wait for slaves to finish
     }
 
     /// Set whether this node is a PV node.
@@ -214,6 +213,12 @@ impl Node {
 
         let mut inner = self.inner.lock().unwrap();
 
+        // This is an invariant and should be checked in all functions that create or mutate self.inner.
+        debug_assert_eq!(
+            inner.n_moves_todo + inner.n_moves_done,
+            inner.move_list.len() as i32
+        );
+
         if inner.n_moves_todo == 0 {
             return None;
         }
@@ -253,7 +258,7 @@ mod tests {
         let move_list = MoveList::new(&position);
 
         let search = Search::new(&position, 0, 0);
-        let node = Node::new(search.shared, 0, 0, 0, 0, None, 0);
+        let node = Node::new(search.shared, 0, 0, 0, None, 0);
 
         node.set_move_list(move_list.clone());
 
@@ -270,7 +275,7 @@ mod tests {
         let move_list = MoveList::new(&position);
 
         let search = Search::new(&position, 0, 0);
-        let node = Node::new(search.shared, 0, 0, 0, 0, None, 0);
+        let node = Node::new(search.shared, 0, 0, 0, None, 0);
 
         node.set_move_list(move_list.clone());
 

@@ -342,7 +342,7 @@ pub const SORT_ALPHA_DELTA: i32 = 8;
 /// Threshold values to try stability cutoff during PVS search.
 /// 99 means unused value.
 #[rustfmt::skip]
-pub const PVS_STABILITY_THRESHOLD: [i32; 56] = [
+pub const PVS_STABILITY_THRESHOLD: [i32; 61] = [
     99, 99, 99, 99, -2,  0,  2,  4,
      6,  8, 12, 14, 16, 18, 20, 22,
     24, 26, 28, 30, 32, 34, 36, 38,
@@ -350,12 +350,13 @@ pub const PVS_STABILITY_THRESHOLD: [i32; 56] = [
     48, 48, 50, 50, 52, 52, 54, 54,
     56, 56, 58, 58, 60, 60, 62, 62,
     99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99 // Edax only uses 56 values, we add 5 more to cover all cases
 ];
 
 /// Threshold values to try stability cutoff during NWS search.
 /// 99 means unused value.
 #[rustfmt::skip]
-pub const NWS_STABILITY_THRESHOLD: [i32; 56] = [
+pub const NWS_STABILITY_THRESHOLD: [i32; 61] = [
     99, 99, 99, 99,  6,  8, 10, 12,
     14, 16, 20, 22, 24, 26, 28, 30,
     32, 34, 36, 38, 40, 42, 44, 46,
@@ -363,6 +364,7 @@ pub const NWS_STABILITY_THRESHOLD: [i32; 56] = [
     56, 56, 58, 58, 60, 60, 62, 62,
     64, 64, 64, 64, 64, 64, 64, 64,
     99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99 // Edax only uses 56 values, we add 5 more to cover all cases
 ];
 
 /// Switch from midgame to endgame search (faster but less node efficient) at this depth.

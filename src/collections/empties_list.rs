@@ -228,11 +228,13 @@ impl EmptiesList {
 
     /// Get the number of squares in the list.
     pub fn len(&self) -> usize {
-        self.nodes.len() - 1
+        // TODO This is slow, keep a separate counter, or remove completely.
+        self.iter().count()
     }
 
     /// Check if the list is empty.
     pub fn is_empty(&self) -> bool {
+        // TODO This is slow, check next pointer of sentinel node instead.
         self.len() == 0
     }
 
@@ -605,8 +607,7 @@ mod tests {
 
         list.remove_by_x(22);
 
-        // Removing item from list doesn't change length
-        assert_eq!(list.len(), 2);
+        assert_eq!(list.len(), 1);
         assert!(!list.is_empty());
 
         let list = from_int_array(&[]);

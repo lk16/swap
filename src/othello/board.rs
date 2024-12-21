@@ -232,12 +232,12 @@ mod tests {
         let expected_output_black = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1
-2                 2
-3       ·         3
+2                 2    -> ○  2 -  4 moves
+3       ·         3       ●  2 -  4 moves
 4     · ● ○       4
 5       ○ ● ·     5
 6         ·       6
-7                 7
+7                 7   (0x0000000810000000, 0x0000001008000000)
 8                 8
 +-A-B-C-D-E-F-G-H-+
 ";
@@ -254,12 +254,12 @@ mod tests {
         let expected_output_white = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1
-2                 2
-3     · ○ ·       3
+2                 2       ○  4 -  3 moves
+3     · ○ ·       3    -> ●  1 -  3 moves
 4       ○ ○       4
 5     · ○ ●       5
 6                 6
-7                 7
+7                 7   (0x0000001000000000, 0x0000000818080000)
 8                 8
 +-A-B-C-D-E-F-G-H-+
 ";

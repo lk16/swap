@@ -41,8 +41,26 @@ lazy_static! {
 
 /// Helper for printing bitset to facilitate testing its implementation.
 fn print_bitset_to<W: std::fmt::Write>(bitset: u64, writer: &mut W) -> std::fmt::Result {
-    let position = Position::new_from_bitboards(0, bitset);
-    write!(writer, "{}", position.ascii_art(true))
+    let mut lines = vec![];
+    lines.push("+-A-B-C-D-E-F-G-H-+".to_string());
+    for row in 0..8 {
+        let mut line = String::new();
+        line.push_str(&format!("{} ", row + 1));
+        for col in 0..8 {
+            let index = row * 8 + col;
+            let mask = 1u64 << index;
+            if bitset & mask != 0 {
+                line.push_str("● ");
+            } else {
+                line.push_str("  ");
+            }
+        }
+        line.push_str(&format!("{}", row + 1));
+        lines.push(line);
+    }
+    lines.push("+-A-B-C-D-E-F-G-H-+".to_string());
+
+    write!(writer, "{}", lines.join("\n") + "\n")
 }
 
 /// Print a bitset as an ASCII art board to stdout. Useful for debugging.
@@ -107,6 +125,11 @@ impl Position {
         Self::new_from_bitboards(0, 0)
     }
 
+    /// Create a new random position with given number of empty squares.
+    pub fn new_random_with_empties(n_empty: usize) -> Self {
+        Self::new_random_with_discs(64 - n_empty)
+    }
+
     /// Create a new random position with a given number of discs.
     pub fn new_random_with_discs(n_discs: usize) -> Self {
         assert!(
@@ -142,13 +165,35 @@ impl Position {
     /// Create a new position by applying a move to a position.
     /// This is potentially more efficient than calling `do_move` because it
     /// avoids the swap of the player and opponent bitboards.
+    ///
+    /// Like board_next() in Edax
     pub fn new_from_parent_and_move(parent: &Position, move_index: usize) -> (Self, u64) {
+        // TODO rename this function
+
         let flipped = parent.get_flipped(move_index);
         let player = parent.opponent ^ flipped;
 
         let position = Self {
             opponent: parent.player ^ (flipped | (1u64 << move_index)),
             player,
+        };
+
+        position.check_invariants();
+        (position, flipped)
+    }
+
+    /// Create a new position by passing and applying a move to a position.
+    /// This avoids extra swapping and copying of bitboards.
+    ///
+    /// Like board_pass_next() in Edax
+    pub fn new_from_parent_and_pass_and_move(parent: &Position, move_index: usize) -> (Self, u64) {
+        // TODO rename this function
+
+        let flipped = parent.get_flipped_after_pass(move_index);
+
+        let position = Self {
+            player: parent.player ^ flipped,
+            opponent: parent.opponent ^ (flipped | (1u64 << move_index)),
         };
 
         position.check_invariants();
@@ -220,6 +265,11 @@ impl Position {
         get_flipped(self.player, self.opponent, index)
     }
 
+    /// Get bitset of flipped discs after passing.
+    pub fn get_flipped_after_pass(&self, index: usize) -> u64 {
+        get_flipped(self.opponent, self.player, index)
+    }
+
     /// Undo a move by reversing the effect of `do_move`.
     pub fn undo_move(&mut self, index: usize, flipped: u64) {
         std::mem::swap(&mut self.player, &mut self.opponent);
@@ -238,34 +288,77 @@ impl Position {
 
     /// Returns an ASCII art representation of the board.
     pub fn ascii_art(&self, black_to_move: bool) -> String {
-        let (player_char, opponent_char) = if black_to_move {
-            ("○", "●")
+        let player_char;
+        let opponent_char;
+        let black_count;
+        let white_count;
+        let black_moves;
+        let white_moves;
+        let black_move_arrow;
+        let white_move_arrow;
+
+        if black_to_move {
+            player_char = "○";
+            opponent_char = "●";
+            black_count = self.player.count_ones();
+            white_count = self.opponent.count_ones();
+            black_moves = self.get_moves().count_ones();
+            white_moves = self.get_opponent_moves().count_ones();
+            black_move_arrow = "->";
+            white_move_arrow = "  ";
         } else {
-            ("●", "○")
-        };
+            player_char = "●";
+            opponent_char = "○";
+            black_count = self.opponent.count_ones();
+            white_count = self.player.count_ones();
+            black_moves = self.get_opponent_moves().count_ones();
+            white_moves = self.get_moves().count_ones();
+            black_move_arrow = "  ";
+            white_move_arrow = "->";
+        }
+
         let moves = self.get_moves();
 
-        let mut output = String::new();
-        output.push_str("+-A-B-C-D-E-F-G-H-+\n");
+        let mut lines = vec![];
+        lines.push("+-A-B-C-D-E-F-G-H-+".to_string());
         for row in 0..8 {
-            output.push_str(&format!("{} ", row + 1));
+            let mut line = String::new();
+            line.push_str(&format!("{} ", row + 1));
             for col in 0..8 {
                 let index = row * 8 + col;
                 let mask = 1u64 << index;
                 if self.player & mask != 0 {
-                    output.push_str(&format!("{} ", player_char));
+                    line.push_str(&format!("{} ", player_char));
                 } else if self.opponent & mask != 0 {
-                    output.push_str(&format!("{} ", opponent_char));
+                    line.push_str(&format!("{} ", opponent_char));
                 } else if moves & mask != 0 {
-                    output.push_str("· ");
+                    line.push_str("· ");
                 } else {
-                    output.push_str("  ");
+                    line.push_str("  ");
                 }
             }
-            output.push_str(&format!("{}\n", row + 1));
+            line.push_str(&format!("{}", row + 1));
+            lines.push(line);
         }
-        output.push_str("+-A-B-C-D-E-F-G-H-+\n");
-        output
+        lines.push("+-A-B-C-D-E-F-G-H-+".to_string());
+
+        let space = "   ";
+
+        lines[2] += &format!(
+            "{} {} ○ {:2} - {:2} moves",
+            space, black_move_arrow, black_count, black_moves
+        );
+        lines[3] += &format!(
+            "{} {} ● {:2} - {:2} moves",
+            space, white_move_arrow, white_count, white_moves
+        );
+
+        lines[7] += &format!(
+            "{}(0x{:016X}, 0x{:016X})",
+            space, self.player, self.opponent
+        );
+
+        lines.join("\n") + "\n"
     }
 
     /// Count the number of discs on the board.
@@ -321,6 +414,8 @@ impl Position {
     ///
     /// Like board_solve() in Edax
     pub fn final_score_with_empty(&self, empty_count: i32) -> i32 {
+        debug_assert_eq!(empty_count, self.count_empty() as i32);
+
         let player_disc_count = self.player.count_ones() as i32;
         let opponent_disc_count = 64 - empty_count - player_disc_count;
         let mut score = player_disc_count - opponent_disc_count;
@@ -593,12 +688,12 @@ mod tests {
         let expected_output_black = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1
-2                 2
-3       ·         3
+2                 2    -> ○  2 -  4 moves
+3       ·         3       ●  2 -  4 moves
 4     · ● ○       4
 5       ○ ● ·     5
 6         ·       6
-7                 7
+7                 7   (0x0000000810000000, 0x0000001008000000)
 8                 8
 +-A-B-C-D-E-F-G-H-+
 ";
@@ -615,12 +710,12 @@ mod tests {
         let expected_output_white = "\
 +-A-B-C-D-E-F-G-H-+
 1                 1
-2                 2
-3     · ○ ·       3
+2                 2       ○  4 -  3 moves
+3     · ○ ·       3    -> ●  1 -  3 moves
 4       ○ ○       4
 5     · ○ ●       5
 6                 6
-7                 7
+7                 7   (0x0000001000000000, 0x0000000818080000)
 8                 8
 +-A-B-C-D-E-F-G-H-+
 ";
@@ -885,7 +980,7 @@ mod tests {
     fn test_final_score_with_empty() {
         // Test player winning with empty squares
         let player_wins = Position {
-            player: 0x0000000000000007,   // 3 discs
+            player: 0x000000000000000E,   // 3 discs
             opponent: 0x0000000000000001, // 1 disc
         };
         assert_eq!(player_wins.final_score_with_empty(60), 62); // 64 - (2 * 1)
@@ -893,14 +988,14 @@ mod tests {
         // Test opponent winning with empty squares
         let opponent_wins = Position {
             player: 0x0000000000000001,   // 1 disc
-            opponent: 0x0000000000000007, // 3 discs
+            opponent: 0x000000000000000E, // 3 discs
         };
         assert_eq!(opponent_wins.final_score_with_empty(60), -62); // -64 + (2 * 1)
 
         // Test draw with empty squares
         let draw = Position {
             player: 0x0000000000000003,   // 2 discs
-            opponent: 0x0000000000000003, // 2 discs
+            opponent: 0x000000000000000C, // 2 discs
         };
         assert_eq!(draw.final_score_with_empty(60), 0);
 
@@ -1005,5 +1100,41 @@ mod tests {
         let position = Position::new();
         assert_eq!(position.player(), position.player);
         assert_eq!(position.opponent(), position.opponent);
+    }
+
+    #[test]
+    fn test_new_from_parent_and_pass_and_move() {
+        for position in test_positions() {
+            for index in position.iter_move_indices() {
+                let (child, flipped) =
+                    Position::new_from_parent_and_pass_and_move(&position, index);
+
+                let mut expected_child = position;
+                expected_child.pass();
+                let expected_flipped = expected_child.do_move(index);
+                assert_eq!(child, expected_child);
+                assert_eq!(flipped, expected_flipped);
+            }
+        }
+    }
+
+    #[test]
+    fn test_new_random_with_empties() {
+        // Test various numbers of empty squares
+        for n_empty in [4, 10, 20, 30, 40, 50, 60] {
+            let position = Position::new_random_with_empties(n_empty);
+
+            // Verify correct number of empty squares
+            assert_eq!(position.count_empty(), n_empty as u32);
+
+            // Verify total number of discs + empties = 64
+            assert_eq!(position.count_discs() + position.count_empty(), 64);
+        }
+
+        // Should panic with more than 60 empty squares (less than 4 discs)
+        let result = std::panic::catch_unwind(|| {
+            Position::new_random_with_empties(61);
+        });
+        assert!(result.is_err());
     }
 }

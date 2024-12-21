@@ -75,6 +75,9 @@ impl SearchState {
         let empties = position.empties();
         let n_empties = empties.count_ones() as i32;
 
+        // We can't have fewer than 60 empties, since we'll risk crashing when computing the heuristic.
+        debug_assert!(n_empties <= 60);
+
         let mut parity = 0;
         for x in PRESORTED_X {
             if empties & (1 << x) != 0 {
@@ -338,10 +341,14 @@ impl SearchState {
     ///
     /// Like search_SC_NWS() in Edax
     pub fn stability_cutoff_nws(&self, alpha: i32) -> Option<i32> {
+        // Only consider stability cutoff if alpha is high enough
         if alpha >= NWS_STABILITY_THRESHOLD[self.n_empties as usize] {
-            let score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
-            if score <= alpha {
-                return Some(score);
+            // Calculate maximum possible score based on opponent's stable discs
+            let max_score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
+            dbg!(max_score, alpha);
+            if max_score <= alpha {
+                // Position can't exceed alpha, so we can cut off search here
+                return Some(max_score);
             }
         }
 
@@ -352,12 +359,19 @@ impl SearchState {
     ///
     /// Like search_SC_PVS() in Edax
     pub fn stability_cutoff_pvs(&self, alpha: i32, beta: &mut i32) -> Option<i32> {
+        // Only consider stability cutoff if beta is high enough
         if *beta >= PVS_STABILITY_THRESHOLD[self.n_empties as usize] {
-            let score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
-            if score <= alpha {
-                return Some(score);
-            } else if score < *beta {
-                *beta = score;
+            // Calculate maximum possible score based on opponent's stable discs
+            let max_score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
+
+            dbg!(max_score, alpha, *beta);
+
+            if max_score <= alpha {
+                // Position can't exceed alpha, so we can cut off search here
+                return Some(max_score);
+            } else if max_score < *beta {
+                // Update beta to tighten the search window
+                *beta = max_score;
             }
         }
 
@@ -893,5 +907,67 @@ mod tests {
             state.pass_endgame();
             state.validate_endgame(&position);
         }
+    }
+
+    #[test]
+    fn test_stability_cutoff_pvs() {
+        // Create position with a bunch of stable discs for the opponent
+        let position = Position::new_from_bitboards(0x0, 0xFFFF001818000000);
+        let state = SearchState::new(&position);
+
+        let threshold = PVS_STABILITY_THRESHOLD[state.n_empties() as usize];
+
+        // Test case 1: beta below threshold - should return None
+        let mut beta = threshold - 1;
+        assert_eq!(state.stability_cutoff_pvs(0, &mut beta), None);
+
+        // Test case 2: max_score <= alpha - should return Some(max_score)
+        let alpha = threshold + 1; // Very high alpha
+        let mut beta = threshold + 2;
+        let expected_max_score = SCORE_MAX - 2 * state.position().count_opponent_stable_discs();
+        assert_eq!(
+            state.stability_cutoff_pvs(alpha, &mut beta),
+            Some(expected_max_score)
+        );
+
+        // Test case 3: max_score < beta - should update beta and return None
+        let alpha = 0;
+        let mut beta = SCORE_MAX;
+        let original_beta = beta;
+        assert_eq!(state.stability_cutoff_pvs(alpha, &mut beta), None);
+        assert!(beta < original_beta);
+        assert_eq!(beta, expected_max_score);
+
+        // Test case 4: normal case - should return None without updating beta
+        let alpha = 0;
+        let mut beta = expected_max_score;
+        let original_beta = beta;
+        assert_eq!(state.stability_cutoff_pvs(alpha, &mut beta), None);
+        assert_eq!(beta, original_beta);
+    }
+
+    #[test]
+    fn test_stability_cutoff_nws() {
+        // Create position with a bunch of stable discs for the opponent
+        let position = Position::new_from_bitboards(0x0, 0xFFFF001818000000);
+        let state = SearchState::new(&position);
+
+        let threshold = NWS_STABILITY_THRESHOLD[state.n_empties() as usize];
+
+        // Test case 1: alpha below threshold - should return None
+        let alpha = threshold - 1;
+        assert_eq!(state.stability_cutoff_nws(alpha), None);
+
+        // Test case 2: max_score <= alpha - should return Some(max_score)
+        let alpha = threshold + 1; // Very high alpha
+        let expected_max_score = SCORE_MAX - 2 * state.position().count_opponent_stable_discs();
+        assert_eq!(state.stability_cutoff_nws(alpha), Some(expected_max_score));
+
+        // Test case 3: alpha >= threshold but max_score > alpha - should return None
+        // Create a new position with fewer opponent stable discs
+        let position = Position::new_from_bitboards(0x0, 0x8100110000000000);
+        let state = SearchState::new(&position);
+        let alpha = threshold; // Use threshold as alpha
+        assert_eq!(state.stability_cutoff_nws(alpha), None);
     }
 }

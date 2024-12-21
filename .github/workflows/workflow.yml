@@ -34,3 +34,7 @@ jobs:
         env:
           RUN_EDAX_MIDGAME_TESTS: 1
         run: cargo test bot::edax::midgame::tests::test_midgame_search --release -- --nocapture
+      - name: Test edax endgame
+        env:
+          RUN_NWS_ENDGAME_SLOW: 1
+        run: cargo test bot::edax::search::tests::test_nws_endgame_slow --release -- --nocapture
