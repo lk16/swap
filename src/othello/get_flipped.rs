@@ -11,14 +11,14 @@ pub fn get_flipped(player: u64, opponent: u64, index: usize) -> u64 {
 
 type FlipFn = fn(u64, u64) -> u64;
 
-static FLIP: [FlipFn; 64] = [
+static FLIP: [FlipFn; 65] = [
     flip_a1, flip_b1, flip_c1, flip_d1, flip_e1, flip_f1, flip_g1, flip_h1, flip_a2, flip_b2,
     flip_c2, flip_d2, flip_e2, flip_f2, flip_g2, flip_h2, flip_a3, flip_b3, flip_c3, flip_d3,
     flip_e3, flip_f3, flip_g3, flip_h3, flip_a4, flip_b4, flip_c4, flip_d4, flip_e4, flip_f4,
     flip_g4, flip_h4, flip_a5, flip_b5, flip_c5, flip_d5, flip_e5, flip_f5, flip_g5, flip_h5,
     flip_a6, flip_b6, flip_c6, flip_d6, flip_e6, flip_f6, flip_g6, flip_h6, flip_a7, flip_b7,
     flip_c7, flip_d7, flip_e7, flip_f7, flip_g7, flip_h7, flip_a8, flip_b8, flip_c8, flip_d8,
-    flip_e8, flip_f8, flip_g8, flip_h8,
+    flip_e8, flip_f8, flip_g8, flip_h8, flip_pass,
 ];
 
 const OUTFLANK_2: [u8; 64] = [
@@ -1237,6 +1237,10 @@ fn flip_h8(p: u64, o: u64) -> u64 {
     flipped |= (outflank_d9.wrapping_neg().wrapping_mul(2)) & 0x0040201008040200;
 
     flipped
+}
+
+fn flip_pass(_p: u64, _o: u64) -> u64 {
+    0
 }
 
 #[cfg(test)]

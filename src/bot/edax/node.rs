@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{
-    r#const::Stop,
+    r#const::{Stop, SCORE_INF},
     search::{Search, Shared},
 };
 
@@ -81,7 +81,7 @@ impl Node {
             parent,
             search,
             best_move: NO_MOVE as i32,
-            best_score: 0,
+            best_score: -SCORE_INF,
             n_moves_todo: 0,                  // Set in set_move_list()
             n_moves_done: 0,                  // Set in set_move_list()
             move_list: MoveList::new_empty(), // Set in set_move_list()
@@ -92,11 +92,13 @@ impl Node {
         })
     }
 
-    /// Like node_update() in Edax, but we pass `search`,
-    /// because we need to modify fields that are not in `self.shared`.
-    pub fn update(&self, move_: &Move, search: &mut Search) {
+    /// Like node_update() in Edax, but we pass extra arguments:
+    /// - `search` because we need to modify fields that are not in `self.shared`
+    /// - `index` because we need to update the move score by its index in the move list
+    pub fn update(&self, index: usize, search: &mut Search) {
         let mut inner = self.inner.lock().unwrap();
 
+        let move_ = inner.move_list[index].clone();
         let score = move_.score.get();
 
         if inner.search.stop.load(Ordering::Relaxed) == Stop::Running as u8
@@ -108,7 +110,7 @@ impl Node {
             if inner.height == 0 {
                 search.record_best_move(
                     search.state.position(),
-                    move_,
+                    &move_,
                     inner.alpha,
                     inner.beta,
                     inner.depth,

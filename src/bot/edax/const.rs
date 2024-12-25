@@ -279,7 +279,7 @@ pub const GAME_SIZE: usize = 80;
 
 /// Indicates the type of node in a search tree.
 #[repr(u8)]
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum NodeType {
     /// Main line of best play, searched most thoroughly with full alpha-beta window
     #[default]
@@ -455,3 +455,17 @@ pub const SQUARE_VALUE: [i32; 64] = [
 	 4,  2,   6,  8,  8,  6,  2,  4,
     18,  4,  16, 12, 12, 16,  4, 18
 ];
+
+/// Weights for move sorting.
+pub const WEIGHT_WIPEOUT: i32 = 1 << 30;
+pub const WEIGHT_FIRST_HASH_MOVE: i32 = 1 << 29;
+pub const WEIGHT_SECOND_HASH_MOVE: i32 = 1 << 28;
+pub const WEIGHT_HASH: i32 = 1 << 15;
+pub const WEIGHT_EVAL: i32 = 1 << 15;
+pub const WEIGHT_MOBILITY: i32 = 1 << 15;
+pub const WEIGHT_CORNER_STABILITY: i32 = 1 << 11;
+pub const WEIGHT_EDGE_STABILITY: i32 = 1 << 11;
+pub const WEIGHT_POTENTIAL_MOBILITY: i32 = 1 << 5;
+pub const WEIGHT_LOW_PARITY: i32 = 1 << 3;
+pub const WEIGHT_MID_PARITY: i32 = 1 << 2;
+pub const WEIGHT_HIGH_PARITY: i32 = 1 << 1;

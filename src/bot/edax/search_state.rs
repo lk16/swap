@@ -345,7 +345,6 @@ impl SearchState {
         if alpha >= NWS_STABILITY_THRESHOLD[self.n_empties as usize] {
             // Calculate maximum possible score based on opponent's stable discs
             let max_score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
-            dbg!(max_score, alpha);
             if max_score <= alpha {
                 // Position can't exceed alpha, so we can cut off search here
                 return Some(max_score);
@@ -363,8 +362,6 @@ impl SearchState {
         if *beta >= PVS_STABILITY_THRESHOLD[self.n_empties as usize] {
             // Calculate maximum possible score based on opponent's stable discs
             let max_score = SCORE_MAX - 2 * self.position.count_opponent_stable_discs();
-
-            dbg!(max_score, alpha, *beta);
 
             if max_score <= alpha {
                 // Position can't exceed alpha, so we can cut off search here
@@ -501,7 +498,7 @@ impl SearchState {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
     use std::collections::HashSet;
 
@@ -738,7 +735,7 @@ mod tests {
     }
 
     impl SearchState {
-        fn eval_naive(&mut self, depth: i32, mut alpha: i32, beta: i32) -> i32 {
+        pub fn eval_naive(&mut self, depth: i32, mut alpha: i32, beta: i32) -> i32 {
             if depth == 0 {
                 return self.eval_0();
             }

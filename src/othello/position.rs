@@ -253,7 +253,12 @@ impl Position {
 
     /// Apply a move to the position, but we already know which discs are flipped.
     pub fn do_move_with_flipped(&mut self, index: usize, flipped: u64) {
-        self.player |= flipped | (1u64 << index);
+        debug_assert!(index <= 64);
+
+        // TODO #15 further optimization: use x_to_bit table like in Edax
+        // instead of 1u64.checked_shl(index as u32).unwrap_or(0)
+
+        self.player |= flipped | 1u64.checked_shl(index as u32).unwrap_or(0);
         self.opponent ^= flipped;
         std::mem::swap(&mut self.player, &mut self.opponent);
 
@@ -272,8 +277,13 @@ impl Position {
 
     /// Undo a move by reversing the effect of `do_move`.
     pub fn undo_move(&mut self, index: usize, flipped: u64) {
+        debug_assert!(index <= 64);
+
+        // TODO #15 further optimization: use x_to_bit table like in Edax
+        // instead of 1u64.checked_shl(index as u32).unwrap_or(0)
+
         std::mem::swap(&mut self.player, &mut self.opponent);
-        self.player &= !(flipped | (1u64 << index));
+        self.player &= !(flipped | 1u64.checked_shl(index as u32).unwrap_or(0));
         self.opponent |= flipped;
 
         self.check_invariants();
@@ -601,7 +611,7 @@ impl Iterator for MoveIndices {
 
 #[cfg(test)]
 mod tests {
-    use crate::bot::edax::eval::tests::test_positions;
+    use crate::{bot::edax::eval::tests::test_positions, othello::squares::PASS};
 
     use super::*;
 
@@ -1136,5 +1146,22 @@ mod tests {
             Position::new_random_with_empties(61);
         });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_do_move_and_undo_pass() {
+        let mut position = Position::new();
+        let original = position;
+
+        position.do_move(PASS);
+
+        // discs should be swapped
+        assert_eq!(position.opponent, original.player);
+        assert_eq!(position.player, original.opponent);
+
+        position.undo_move(PASS, 0);
+
+        // position should be same as original
+        assert_eq!(position, original);
     }
 }
