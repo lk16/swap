@@ -3582,11 +3582,12 @@ mod tests {
                 for alpha in [SCORE_MIN, expected - 1, expected, expected + 1, SCORE_MAX] {
                     // Clearing tables is required because the tables are reused for different positions and depths.
                     // Otherwise the results will pollute each other and the test will fail.
-                    // TODO is this a bug?
-                    if USE_SHALLOW_TABLE {
-                        search.shallow_table.clear();
-                    } else {
-                        search.hash_table.clear();
+                    unsafe {
+                        if USE_SHALLOW_TABLE {
+                            search.shallow_table.clear_unchecked();
+                        } else {
+                            search.hash_table.clear_unchecked();
+                        }
                     }
 
                     let score = search.nws_shallow::<USE_SHALLOW_TABLE>(alpha, depth);
@@ -3657,9 +3658,9 @@ mod tests {
                 ] {
                     // Clearing tables is required because the tables are reused for different positions and depths.
                     // Otherwise the results will pollute each other and the test will fail.
-                    // TODO is this a bug?
-                    search.shallow_table.clear();
-
+                    unsafe {
+                        search.shallow_table.clear_unchecked();
+                    }
                     let score = search.pvs_shallow(alpha, beta, depth);
 
                     let ok = if expected < alpha {
@@ -4027,8 +4028,10 @@ mod tests {
                 // Prevent integer underflow
                 search.result.lock().unwrap().n_moves_left = position.count_moves();
 
-                search.hash_table.clear();
-                search.shallow_table.clear();
+                unsafe {
+                    search.hash_table.clear_unchecked();
+                    search.shallow_table.clear_unchecked();
+                }
 
                 let score = search.nws_midgame(alpha, depth, None);
                 assert_eq!(*search.state.position(), position);

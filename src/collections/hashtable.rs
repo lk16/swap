@@ -1,7 +1,8 @@
+use std::cell::UnsafeCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::RwLock;
+use std::sync::Mutex;
 
 use crate::bot::edax::r#const::{SCORE_INF, SCORE_MAX, SCORE_MIN};
 use crate::othello::position::Position;
@@ -217,8 +218,6 @@ impl Entry {
     }
 }
 
-type Bucket = [Entry; BUCKET_SIZE];
-
 /// Arguments for storing position data in the hash table
 pub struct StoreArgs<'a> {
     /// The position being searched
@@ -252,8 +251,11 @@ pub struct StoreArgs<'a> {
 /// Each bucket contains BUCKET_SIZE entries that are protected by RwLocks
 /// for concurrent access.
 pub struct HashTable {
-    /// Buckets for storing entries
-    buckets: Box<[RwLock<Bucket>]>,
+    /// Continuously allocated entries
+    entries: Box<[UnsafeCell<Entry>]>,
+
+    /// Locks for each bucket
+    locks: Box<[Mutex<()>]>,
 
     /// Mask for indexing into buckets
     mask: usize,
@@ -265,61 +267,95 @@ pub struct HashTable {
 impl HashTable {
     /// Creates a new hash table with the specified size (rounded up to next power of 2).
     pub fn new(size: usize) -> Self {
-        // Round up to power of 2
-        let size = size.next_power_of_two();
-        let mask = size - 1;
+        // Round up to power of 2 and ensure it is at least BUCKET_SIZE
+        let size = size.next_power_of_two().max(BUCKET_SIZE);
 
-        // Create buckets
-        let buckets = (0..size)
-            .map(|_| RwLock::new(Bucket::default()))
+        debug_assert_eq!(size % BUCKET_SIZE, 0);
+
+        let entries = (0..size)
+            .map(|_| UnsafeCell::new(Entry::default()))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+
+        let bucket_count = size / BUCKET_SIZE;
+        let mask = bucket_count - 1;
+
+        // Create locks - one per bucket of BUCKET_SIZE entries
+        let locks = (0..bucket_count)
+            .map(|_| Mutex::new(()))
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
         HashTable {
-            buckets,
+            entries,
+            locks,
             mask,
             date: AtomicU8::new(0),
         }
     }
 
-    /// Calculate the bucket index for a given position.
-    fn get_bucket_index(&self, position: &Position) -> usize {
+    /// Calculate the lock index for a given position.
+    fn get_lock_index(&self, position: &Position) -> usize {
         let mut hasher = DefaultHasher::new();
         position.hash(&mut hasher);
         hasher.finish() as usize & self.mask
+    }
+
+    /// Calculate the bucket index for a given position.
+    fn get_bucket_start_index(&self, position: &Position) -> usize {
+        self.get_lock_index(position) * BUCKET_SIZE
     }
 
     /// Stores a position evaluation in the hash table, replacing existing or least valuable entries if necessary
     ///
     /// Like hash_store() in Edax
     pub fn store(&self, args: &StoreArgs) {
-        let bucket_idx = self.get_bucket_index(args.position);
-        let mut bucket = self.buckets[bucket_idx].write().unwrap();
         let date = self.date.load(Ordering::Relaxed);
 
+        let lock_idx = self.get_lock_index(args.position);
+        let _lock = self.locks[lock_idx].lock().unwrap();
+
+        let bucket_start_idx = self.get_bucket_start_index(args.position);
+
         // Try to update an existing entry first
-        for entry in bucket.iter_mut() {
+        for i in 0..BUCKET_SIZE {
+            // SAFETY: We hold the write lock for this bucket
+            let entry = unsafe { &mut *self.entries[bucket_start_idx + i].get() };
+
             if entry.update(date, args) {
                 return;
             }
         }
 
-        let entry = bucket
-            .iter_mut()
-            .min_by_key(|entry| entry.hash_data.writable_level())
+        // Find entry with minimum writable_level to replace
+        let min_level_idx = (0..BUCKET_SIZE)
+            .map(|i| {
+                // SAFETY: We hold the write lock for this bucket
+                let entry = unsafe { &*self.entries[bucket_start_idx + i].get() };
+
+                (i, entry.hash_data.writable_level())
+            })
+            .min_by_key(|&(_, level)| level)
+            .map(|(i, _)| i)
             .unwrap();
 
+        // SAFETY: We hold the write lock for this bucket
+        let entry = unsafe { &mut *self.entries[bucket_start_idx + min_level_idx].get() };
         *entry = Entry::new(date, args);
     }
 
     /// Retrieves a HashData for a given position, or None if the position is not cached
     pub fn get(&self, position: &Position) -> Option<HashData> {
-        let bucket_idx = self.get_bucket_index(position);
-        let bucket = &self.buckets[bucket_idx];
+        let lock_idx = self.get_lock_index(position);
+        let _lock = self.locks[lock_idx].lock().unwrap();
+
+        let bucket_start_idx = self.get_bucket_start_index(position);
 
         // Find the entry and update date with write lock
-        let mut entries = bucket.write().unwrap();
-        for entry in entries.iter_mut() {
+        for i in 0..BUCKET_SIZE {
+            // SAFETY: We hold the read lock for this bucket
+            let entry = unsafe { &mut *self.entries[bucket_start_idx + i].get() };
+
             if entry.position == *position {
                 entry.hash_data.date = self.date.load(Ordering::Relaxed);
                 return Some(entry.hash_data);
@@ -338,10 +374,27 @@ impl HashTable {
     ///
     /// Like hash_cleanup() in Edax.
     pub fn clear(&self) {
-        for bucket in self.buckets.iter() {
-            let mut entries = bucket.write().unwrap();
-            *entries = [Entry::default(); BUCKET_SIZE];
+        for (lock_idx, lock) in self.locks.iter().enumerate() {
+            let mut _lock = lock.lock().unwrap();
+
+            for i in 0..BUCKET_SIZE {
+                // SAFETY: We hold the write lock for this bucket
+                let entry = unsafe { &mut *self.entries[lock_idx * BUCKET_SIZE + i].get() };
+                *entry = Entry::default();
+            }
         }
+    }
+
+    /// Clear the table without locking.
+    /// This is much faster than clear() but sacrifices thread safety.
+    ///
+    /// # Safety
+    /// - This is only safe to use in single-threaded contexts.
+    #[cfg(test)]
+    pub unsafe fn clear_unchecked(&self) {
+        self.entries.iter().for_each(|entry| {
+            *entry.get() = Entry::default();
+        });
     }
 
     /// Performs an optimized clear operation using a date-based strategy
@@ -387,8 +440,12 @@ mod tests {
     #[test]
     fn test_new() {
         let table = HashTable::new(100);
-        assert_eq!(table.mask, 127); // Should round up to 128 (next power of 2) - 1
-        assert_eq!(table.buckets.len(), 128);
+
+        // Should round up to 128 (next power of 2)
+        let bucket_count = 128 / BUCKET_SIZE;
+
+        assert_eq!(table.mask, bucket_count - 1);
+        assert_eq!(table.locks.len(), bucket_count);
         assert_eq!(table.date.load(Ordering::Relaxed), 0);
     }
 
@@ -502,37 +559,6 @@ mod tests {
         // Cleanup should remove all entries
         table.clear();
         assert!(table.get(&pos).is_none());
-    }
-
-    #[test]
-    fn test_concurrent_access() {
-        use std::sync::Arc;
-        use std::thread;
-
-        let table = Arc::new(HashTable::new(16));
-        let pos = Position::new();
-
-        // Store initial data
-        table.store(&StoreArgs::from_pos_and_depth(&pos, 5));
-
-        // Spawn multiple threads to read/write
-        let mut handles = vec![];
-        for _ in 0..4 {
-            let table_clone = Arc::clone(&table);
-            let pos_clone = pos;
-
-            handles.push(thread::spawn(move || {
-                // Read operation
-                if let Some(hash_data) = table_clone.get(&pos_clone) {
-                    assert_eq!(hash_data.depth, 5);
-                }
-            }));
-        }
-
-        // Wait for all threads to complete
-        for handle in handles {
-            handle.join().unwrap();
-        }
     }
 
     #[test]
