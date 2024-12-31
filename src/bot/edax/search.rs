@@ -1495,7 +1495,7 @@ impl Search {
         }
 
         if self.state.n_empties() == 0 {
-            return self.state.eval_0();
+            return self.state.position().final_score_with_empty(0);
         }
 
         if depth < self.state.n_empties()
@@ -1525,7 +1525,7 @@ impl Search {
         if move_list.is_empty() {
             if self.state.position().opponent_has_moves() {
                 self.state.update_pass_midgame();
-                node.set_best_score(self.route_pvs(-beta, -alpha, depth, Some(node.clone())));
+                node.set_best_score(-self.route_pvs(-beta, -alpha, depth, Some(node.clone())));
                 self.state.restore_pass_midgame();
                 node.set_best_move(PASS as i32);
             } else {
@@ -4048,6 +4048,91 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_pvs_midgame() {
+        let mut search = Search::new(&Position::new(), 0, 0);
+
+        // Pretend we have entered via run()
+        search
+            .shared
+            .stop
+            .store(Stop::Running as u8, Ordering::Relaxed);
+
+        let mut positions = vec![];
+
+        // Some regular positions, where player has moves
+        for n_discs in 4..10 {
+            positions.push(Position::new_random_with_discs(n_discs));
+        }
+
+        // Position where player has no moves, but opponent does
+        let position = Position::new_from_bitboards(0x0000F818283E3800, 0x000000E0D0C0C0FC);
+        assert_eq!(position.get_moves(), 0);
+        assert_ne!(position.get_opponent_moves(), 0);
+        positions.push(position);
+
+        // Position where nobody has moves
+        let position = Position::new_from_bitboards(0xFFFFFFFFFFFFFFFF, 0x0);
+        assert_eq!(position.get_moves(), 0);
+        assert_eq!(position.get_opponent_moves(), 0);
+        positions.push(position);
+
+        for position in positions.iter() {
+            for depth in 2..=5 {
+                println!();
+                println!("---");
+                println!();
+                println!("{}", position);
+                println!("depth: {}", depth);
+
+                search.set_position(position, 0);
+
+                let expected = {
+                    let expected = search.state.eval_naive(depth, SCORE_MIN, SCORE_MAX);
+
+                    if position.count_empty() == 0 {
+                        expected
+                    } else {
+                        expected.clamp(SCORE_MIN + 1, SCORE_MAX - 1)
+                    }
+                };
+
+                for (alpha, beta) in [
+                    (SCORE_MIN, SCORE_MAX),
+                    (-10, 0),
+                    (0, 10),
+                    (expected - 1, expected + 1),
+                ] {
+                    // Prevent integer underflow
+                    search.result.lock().unwrap().n_moves_left = position.count_moves();
+
+                    // Clearing tables is required because the tables are reused for different positions and depths.
+                    // Otherwise the results will pollute each other and the test will fail.
+                    unsafe {
+                        search.shallow_table.clear_unchecked();
+                    }
+                    let score = search.pvs_midgame(alpha, beta, depth, None);
+
+                    let ok = if expected < alpha {
+                        score <= alpha
+                    } else if expected > beta {
+                        score >= beta
+                    } else {
+                        score == expected
+                    };
+
+                    if !ok {
+                        println!("alpha: {}", alpha);
+                        println!("beta: {}", beta);
+                        println!("expected: {}", expected);
+                        println!("found: {}", score);
+                        panic!("pvs_midgame returned incorrect result");
+                    }
+                }
+            }
+        }
+    }
+
     // Testing of Search functions, in order of dependency
     //
     // Endgame search:
@@ -4070,8 +4155,8 @@ mod tests {
     // [x] Search::transposition_cutoff_nws()
     // [x] Search::nws_shallow_with_hash_table()
     // [ ] Search::probcut()
-    // [ ] Search::nws_midgame()
-    // [ ] Search::pvs_midgame()
+    // [x] Search::nws_midgame()
+    // [x] Search::pvs_midgame()
     // [ ] Search::route_pvs()
     // [ ] Search::pvs_root()
     // [ ] Search::aspiration_search()
