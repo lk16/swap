@@ -1,23 +1,28 @@
 use std::time::{Duration, Instant};
 
-use crate::{
-    bot::{print_move_stats, print_search_header, print_total_stats, squared::bot::MIDGAME_DEPTH},
-    othello::position::Position,
-};
+use crate::{bot::squared::bot::MIDGAME_DEPTH, othello::position::Position};
+
+use super::{print_move_stats, print_search_header, print_total_stats};
 
 static MIN_MIDGAME_SCORE: isize = -64000;
 static MAX_MIDGAME_SCORE: isize = 64000;
 
+/// Midgame search for SquaredBot.
 pub struct MidgameSearch {
+    /// Number of nodes visited
     nodes: u64,
+
+    /// The position being searched, changes during search.
     position: Position,
 }
 
 impl MidgameSearch {
+    /// Create a new midgame search.
     pub fn new(position: Position) -> Self {
         Self { nodes: 0, position }
     }
 
+    /// Get the best move from the current position.
     pub fn get_move(&mut self) -> usize {
         let children = self.position.children_with_index();
         let mut best_move = children.first().unwrap().0;
@@ -48,6 +53,7 @@ impl MidgameSearch {
         best_move
     }
 
+    /// Negamax search for the best move.
     fn negamax(&mut self, position: &Position, depth: u32, mut alpha: isize, beta: isize) -> isize {
         self.nodes += 1;
 
@@ -84,12 +90,13 @@ impl MidgameSearch {
         alpha
     }
 
+    /// Heuristic for evaluating the position.
     fn heuristic(position: &Position) -> isize {
         const CORNERS: u64 = 0x8100000000000081u64; // Mask for corner positions
 
         // Calculate corner difference
-        let player_corners = (position.player & CORNERS).count_ones() as isize;
-        let opponent_corners = (position.opponent & CORNERS).count_ones() as isize;
+        let player_corners = (position.player() & CORNERS).count_ones() as isize;
+        let opponent_corners = (position.opponent() & CORNERS).count_ones() as isize;
         let corner_diff = player_corners - opponent_corners;
 
         // Calculate move difference

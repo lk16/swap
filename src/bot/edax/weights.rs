@@ -1,28 +1,35 @@
 use lazy_static::lazy_static;
 use std::io::Read;
 
-const EDAX: i32 = 0x58414445; // "EDAX" in ASCII/hex
-const XADE: i32 = 0x45444158; // "XADE" in ASCII/hex (byte-swapped EDAX)
-const EVAL: i32 = 0x4C415645; // "EVAL" in ASCII/hex
-const LAVE: i32 = 0x4556414C; // "LAVE" in ASCII/hex (byte-swapped EVAL)
+/// "EDAX" in ASCII/hex
+const EDAX: i32 = 0x58414445;
 
-/** number of (unpacked) weights */
+/// "XADE" in ASCII/hex (byte-swapped EDAX)
+const XADE: i32 = 0x45444158;
+
+/// "EVAL" in ASCII/hex
+const EVAL: i32 = 0x4C415645;
+
+/// "LAVE" in ASCII/hex (byte-swapped EVAL)
+const LAVE: i32 = 0x4556414C;
+
+/// Number of (unpacked) weights
 const EVAL_N_WEIGHT: usize = 226315;
 
-/** number of plies */
+/// Number of plies
 const EVAL_N_PLY: usize = 61;
 
-/** feature size */
+/// Feature size
 pub const EVAL_SIZE: [usize; 13] = [
     19683, 59049, 59049, 59049, 6561, 6561, 6561, 6561, 2187, 729, 243, 81, 1,
 ];
 
-/** packed feature size */
+/// Packed feature size
 pub const EVAL_PACKED_SIZE: [usize; 13] = [
     10206, 29889, 29646, 29646, 3321, 3321, 3321, 3321, 1134, 378, 135, 45, 1,
 ];
 
-// feature symmetry packing
+// Feature symmetry packing
 lazy_static! {
     static ref EVAL_C10: Vec<Vec<usize>> = {
         let mut eval_c10 = vec![vec![0; 59049]; 2];
@@ -238,6 +245,7 @@ lazy_static! {
     pub static ref EVAL_WEIGHT: Vec<Vec<Vec<i16>>> = load_eval().unwrap();
 }
 
+/// Load evaluation weights from file.
 pub fn load_eval() -> Result<Vec<Vec<Vec<i16>>>, std::io::Error> {
     let mut file = std::fs::File::open("eval.dat")?;
 
@@ -383,6 +391,7 @@ pub fn load_eval() -> Result<Vec<Vec<Vec<i16>>>, std::io::Error> {
     Ok(eval_weight)
 }
 
+/// Compute opponent feature.
 fn opponent_feature(feature: usize, feature_size: usize) -> usize {
     let f = match feature % 3 {
         0 => 1,
