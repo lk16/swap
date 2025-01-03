@@ -4150,6 +4150,22 @@ mod tests {
         }
     }
 
+    impl Search {
+        fn route_pvs_naive(
+            &mut self,
+            alpha: i32,
+            beta: i32,
+            depth: i32,
+            node: Option<Arc<Node>>,
+        ) -> i32 {
+            if self.state.n_empties() == depth {
+                self.pvs_midgame(alpha, beta, depth, node)
+            } else {
+                self.state.eval_naive(depth, alpha, beta)
+            }
+        }
+    }
+
     #[test]
     fn test_route_pvs() {
         let mut search = Search::new(&Position::new(), 0, 0);
@@ -4198,18 +4214,14 @@ mod tests {
             // Prevent integer underflow
             search.result.lock().unwrap().n_moves_left = position.count_moves();
 
-            let expected = if position.count_empty() == depth {
-                search.pvs_midgame(SCORE_MIN, SCORE_MAX, depth as i32, None)
-            } else {
-                search.state.eval_naive(depth as i32, SCORE_MIN, SCORE_MAX)
-            };
+            let expected = search.route_pvs_naive(SCORE_MIN, SCORE_MAX, depth, None);
 
             // Prevent integer underflow
             search.result.lock().unwrap().n_moves_left = position.count_moves();
 
             search.state.set_bound(SCORE_MAX, SCORE_MIN);
 
-            let found = search.route_pvs(SCORE_MIN, SCORE_MAX, depth as i32, None);
+            let found = search.route_pvs(SCORE_MIN, SCORE_MAX, depth, None);
             assert_eq!(found, expected);
         }
     }
