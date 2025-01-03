@@ -4158,11 +4158,13 @@ mod tests {
             depth: i32,
             node: Option<Arc<Node>>,
         ) -> i32 {
-            if self.state.n_empties() == depth {
+            let score = if self.state.n_empties() == depth {
                 self.pvs_midgame(alpha, beta, depth, node)
             } else {
                 self.state.eval_naive(depth, alpha, beta)
-            }
+            };
+
+            -self.state.bound(-score)
         }
     }
 
@@ -4211,18 +4213,31 @@ mod tests {
 
             search.set_position(&position, 0);
 
-            // Prevent integer underflow
-            search.result.lock().unwrap().n_moves_left = position.count_moves();
+            for (alpha, beta) in [(SCORE_MIN, SCORE_MAX), (-10, 0), (0, 10), (0, 2), (-2, 0)] {
+                for (lower, upper) in [(SCORE_MIN, SCORE_MAX), (-32, -19), (-4, 0), (0, 7)] {
+                    // Prevent integer underflow
+                    search.result.lock().unwrap().n_moves_left = position.count_moves();
 
-            let expected = search.route_pvs_naive(SCORE_MIN, SCORE_MAX, depth, None);
+                    search.state.set_bound(upper, lower);
+                    let expected = search.route_pvs_naive(alpha, beta, depth, None);
 
-            // Prevent integer underflow
-            search.result.lock().unwrap().n_moves_left = position.count_moves();
+                    // Prevent integer underflow
+                    search.result.lock().unwrap().n_moves_left = position.count_moves();
 
-            search.state.set_bound(SCORE_MAX, SCORE_MIN);
+                    search.state.set_bound(upper, lower);
+                    let found = search.route_pvs(alpha, beta, depth, None);
 
-            let found = search.route_pvs(SCORE_MIN, SCORE_MAX, depth, None);
-            assert_eq!(found, expected);
+                    if found != expected {
+                        println!("alpha: {}", alpha);
+                        println!("beta: {}", beta);
+                        println!("upper: {}", upper);
+                        println!("lower: {}", lower);
+                        println!("expected: {}", expected);
+                        println!("found: {}", found);
+                        panic!("route_pvs returned incorrect result");
+                    }
+                }
+            }
         }
     }
 
