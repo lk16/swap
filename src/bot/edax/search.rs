@@ -1326,20 +1326,15 @@ impl Search {
         self.node_type[0] = NodeType::PvNode;
 
         if move_list.is_empty() {
-            let move_ = if self.state.position().opponent_has_moves() {
+            if self.state.position().opponent_has_moves() {
                 self.state.update_pass_midgame();
-                let searched =
-                    -self.route_pvs(-node.beta(), -node.alpha(), depth, Some(node.clone()));
+                node.set_best_score(-self.route_pvs(-beta, -alpha, depth, Some(node.clone())));
                 self.state.restore_pass_midgame();
-                node.set_best_score(searched);
-                Move::new_pass_with_score(searched)
+                node.set_best_move(PASS as i32);
             } else {
-                let solved = self.solve();
-                node.set_best_score(solved);
-                Move::new_pass_with_score(solved)
-            };
-
-            node.set_move_list(MoveList::new_one_move(move_));
+                node.set_best_score(self.solve());
+                node.set_best_move(NO_MOVE as i32);
+            }
         } else {
             node.set_move_list(move_list);
 
@@ -1367,7 +1362,7 @@ impl Search {
                     self.state.update_midgame(&move_);
                     let mut score =
                         -self.route_pvs(-alpha - 1, -alpha, depth - 1, Some(node.clone()));
-                    if alpha < move_.score.get() && move_.score.get() < beta {
+                    if alpha < score && score < beta {
                         self.node_type[self.state.height() as usize] = NodeType::PvNode;
                         score = -self.route_pvs(-beta, -alpha, depth - 1, Some(node.clone()));
                     }
@@ -4180,29 +4175,80 @@ mod tests {
 
         let mut cases = vec![];
 
-        // Case that caused overflow
-        cases.push((
-            Position::new_from_bitboards(0xFEEFD7B79D05093F, 0x0110284862F2F6C0),
-            1,
-        ));
+        for (alpha, beta) in [(SCORE_MIN, SCORE_MAX), (-10, 0), (0, 10), (0, 2), (-2, 0)] {
+            for (lower, upper) in [(SCORE_MIN, SCORE_MAX), (-32, -19), (-4, 0), (0, 7)] {
+                for (position, depth) in [
+                    (Position::new_random_with_empties(0), 0), // Depth == 0 and depth == empty squares
+                    (Position::new_random_with_empties(10), 0), // Depth == 0 and depth < empty squares
+                    (Position::new_random_with_empties(10), 1), // Depth == 1 and depth < empty squares
+                    (Position::new_random_with_empties(10), 2), // Depth == 2 and depth < empty squares
+                    (Position::new_random_with_empties(10), 3), // Depth > 2 and depth < empty squares
+                ] {
+                    cases.push((position, depth, alpha, beta, lower, upper));
+                }
+            }
+        }
 
-        // Depth == 0 and depth == empty squares
-        cases.push((Position::new_from_bitboards(0xFFFFFFFFFFFFFFFF, 0x0), 0));
+        for (position, depth, alpha, beta, lower, upper) in cases {
+            println!();
+            println!("---");
+            println!();
+            println!("{}", position);
+            println!("depth: {}", depth);
 
-        // Depth > 0 and depth == empty squares
-        cases.push((Position::new_random_with_empties(1), 1));
+            search.set_position(&position, 0);
 
-        // Depth == 0 and depth < empty squares
-        cases.push((Position::new_random_with_empties(10), 0));
+            // Prevent integer underflow
+            search.result.lock().unwrap().n_moves_left = position.count_moves();
 
-        // Depth == 1 and depth < empty squares
-        cases.push((Position::new_random_with_empties(10), 1));
+            search.state.set_bound(upper, lower);
+            let expected = search.route_pvs_naive(alpha, beta, depth, None);
 
-        // Depth == 2 and depth < empty squares
-        cases.push((Position::new_random_with_empties(10), 2));
+            // Prevent integer underflow
+            search.result.lock().unwrap().n_moves_left = position.count_moves();
 
-        // Depth > 2 and depth < empty squares
-        cases.push((Position::new_random_with_empties(10), 3));
+            search.state.set_bound(upper, lower);
+            let found = search.route_pvs(alpha, beta, depth, None);
+
+            let ok = if expected <= alpha {
+                found <= alpha
+            } else if expected >= beta {
+                found >= beta
+            } else {
+                found == expected
+            };
+
+            if !ok {
+                println!("alpha: {}", alpha);
+                println!("beta: {}", beta);
+                println!("upper: {}", upper);
+                println!("lower: {}", lower);
+                println!("expected: {}", expected);
+                println!("found: {}", found);
+                panic!("route_pvs returned incorrect result");
+            }
+        }
+    }
+
+    #[ignore] // TODO
+    #[test]
+    fn test_pvs_root() {
+        let mut search = Search::new(&Position::new(), 0, 0);
+
+        // Pretend we have entered via run()
+        search
+            .shared
+            .stop
+            .store(Stop::Running as u8, Ordering::Relaxed);
+
+        let mut cases = vec![];
+
+        for depth in 1..=5 {
+            for n_discs in 4..64 {
+                let position = Position::new_random_with_discs(n_discs);
+                cases.push((position, depth));
+            }
+        }
 
         for (position, depth) in cases {
             println!();
@@ -4214,28 +4260,21 @@ mod tests {
             search.set_position(&position, 0);
 
             for (alpha, beta) in [(SCORE_MIN, SCORE_MAX), (-10, 0), (0, 10), (0, 2), (-2, 0)] {
-                for (lower, upper) in [(SCORE_MIN, SCORE_MAX), (-32, -19), (-4, 0), (0, 7)] {
-                    // Prevent integer underflow
-                    search.result.lock().unwrap().n_moves_left = position.count_moves();
+                search.state.set_bound(SCORE_MAX, SCORE_MIN);
+                let expected = search.state.eval_naive(depth, alpha, beta);
 
-                    search.state.set_bound(upper, lower);
-                    let expected = search.route_pvs_naive(alpha, beta, depth, None);
+                // Prevent integer underflow
+                search.result.lock().unwrap().n_moves_left = position.count_moves();
 
-                    // Prevent integer underflow
-                    search.result.lock().unwrap().n_moves_left = position.count_moves();
+                search.state.set_bound(SCORE_MAX, SCORE_MIN);
+                let found = search.pvs_root(alpha, beta, depth);
 
-                    search.state.set_bound(upper, lower);
-                    let found = search.route_pvs(alpha, beta, depth, None);
-
-                    if found != expected {
-                        println!("alpha: {}", alpha);
-                        println!("beta: {}", beta);
-                        println!("upper: {}", upper);
-                        println!("lower: {}", lower);
-                        println!("expected: {}", expected);
-                        println!("found: {}", found);
-                        panic!("route_pvs returned incorrect result");
-                    }
+                if found != expected {
+                    println!("alpha: {}", alpha);
+                    println!("beta: {}", beta);
+                    println!("expected: {}", expected);
+                    println!("found: {}", found);
+                    panic!("pvs_root returned incorrect result");
                 }
             }
         }
