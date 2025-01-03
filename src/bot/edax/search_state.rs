@@ -564,6 +564,10 @@ pub mod tests {
             self.check_invariant_n_empties();
             self.check_invariant_empties();
         }
+
+        pub fn set_bound(&mut self, upper: i32, lower: i32) {
+            self.stability_bound = Bound { upper, lower };
+        }
     }
 
     #[test]

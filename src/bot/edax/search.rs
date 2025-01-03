@@ -1444,24 +1444,31 @@ impl Search {
             .final_score_with_empty(self.state.n_empties())
     }
 
-    /// Find out which tree search function to use and call it.
+    /// Route search requests to the appropriate search function based on depth.
+    /// This is a principal variation search that returns a score from the player's perspective.
+    ///
+    /// The function routes search requests as follows:
+    /// - For depth == 0: returns eval_0()
+    /// - For depth == empty squares: uses pvs_midgame()
+    /// - For depth == 1: uses eval_1()
+    /// - For depth == 2: uses eval_2()
+    /// - For depth > 2: uses pvs_shallow()
     ///
     /// Like search_route_PVS() in Edax
     fn route_pvs(&mut self, alpha: i32, beta: i32, depth: i32, node: Option<Arc<Node>>) -> i32 {
         let score = if depth == self.state.n_empties() {
             if depth == 0 {
-                self.solve()
+                self.state.position().final_score_with_empty(0)
             } else {
                 self.pvs_midgame(alpha, beta, depth, node)
             }
-        } else if depth == 0 {
-            self.state.eval_0()
-        } else if depth == 1 {
-            self.state.eval_1(alpha, beta)
-        } else if depth == 2 {
-            self.state.eval_2(alpha, beta)
         } else {
-            self.pvs_midgame(alpha, beta, depth, node)
+            match depth {
+                0 => self.state.eval_0(),
+                1 => self.state.eval_1(alpha, beta),
+                2 => self.state.eval_2(alpha, beta),
+                _ => self.pvs_midgame(alpha, beta, depth, node),
+            }
         };
 
         -self.state.bound(-score)
@@ -1487,6 +1494,11 @@ impl Search {
     }
 
     /// Principal Variation Search at midgame depth.
+    /// This is a principal variation search that returns a score from the player's perspective.
+    ///
+    /// The function handles positions with more than DEPTH_MIDGAME_TO_ENDGAME (15) empty squares.
+    /// It uses principal variation search (PVS) which is an enhancement to alpha-beta pruning that
+    /// assumes the first move is best and searches remaining moves with a null window.
     ///
     /// Like PVS_midgame() in Edax
     fn pvs_midgame(&mut self, alpha: i32, beta: i32, depth: i32, parent: Option<Arc<Node>>) -> i32 {
@@ -1618,6 +1630,11 @@ impl Search {
     }
 
     /// Null Window Search at midgame depth.
+    /// This is a null window search that returns a score from the player's perspective.
+    ///
+    /// The function handles positions in either of these cases:
+    /// - More than DEPTH_MIDGAME_TO_ENDGAME (15) empty squares
+    /// - Search depth is less than the number of empty squares
     ///
     /// Like NWS_midgame() in Edax
     fn nws_midgame(&mut self, alpha: i32, depth: i32, parent: Option<Arc<Node>>) -> i32 {
@@ -4133,6 +4150,70 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_route_pvs() {
+        let mut search = Search::new(&Position::new(), 0, 0);
+
+        // Pretend we have entered via run()
+        search
+            .shared
+            .stop
+            .store(Stop::Running as u8, Ordering::Relaxed);
+
+        let mut cases = vec![];
+
+        // Case that caused overflow
+        cases.push((
+            Position::new_from_bitboards(0xFEEFD7B79D05093F, 0x0110284862F2F6C0),
+            1,
+        ));
+
+        // Depth == 0 and depth == empty squares
+        cases.push((Position::new_from_bitboards(0xFFFFFFFFFFFFFFFF, 0x0), 0));
+
+        // Depth > 0 and depth == empty squares
+        cases.push((Position::new_random_with_empties(1), 1));
+
+        // Depth == 0 and depth < empty squares
+        cases.push((Position::new_random_with_empties(10), 0));
+
+        // Depth == 1 and depth < empty squares
+        cases.push((Position::new_random_with_empties(10), 1));
+
+        // Depth == 2 and depth < empty squares
+        cases.push((Position::new_random_with_empties(10), 2));
+
+        // Depth > 2 and depth < empty squares
+        cases.push((Position::new_random_with_empties(10), 3));
+
+        for (position, depth) in cases {
+            println!();
+            println!("---");
+            println!();
+            println!("{}", position);
+            println!("depth: {}", depth);
+
+            search.set_position(&position, 0);
+
+            // Prevent integer underflow
+            search.result.lock().unwrap().n_moves_left = position.count_moves();
+
+            let expected = if position.count_empty() == depth {
+                search.pvs_midgame(SCORE_MIN, SCORE_MAX, depth as i32, None)
+            } else {
+                search.state.eval_naive(depth as i32, SCORE_MIN, SCORE_MAX)
+            };
+
+            // Prevent integer underflow
+            search.result.lock().unwrap().n_moves_left = position.count_moves();
+
+            search.state.set_bound(SCORE_MAX, SCORE_MIN);
+
+            let found = search.route_pvs(SCORE_MIN, SCORE_MAX, depth as i32, None);
+            assert_eq!(found, expected);
+        }
+    }
+
     // Testing of Search functions, in order of dependency
     //
     // Endgame search:
@@ -4157,7 +4238,7 @@ mod tests {
     // [ ] Search::probcut()
     // [x] Search::nws_midgame()
     // [x] Search::pvs_midgame()
-    // [ ] Search::route_pvs()
+    // [x] Search::route_pvs()
     // [ ] Search::pvs_root()
     // [ ] Search::aspiration_search()
     // [ ] Search::iterative_deepening()
